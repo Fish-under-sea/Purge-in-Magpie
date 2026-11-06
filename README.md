@@ -323,19 +323,20 @@ node tools/scan.mjs --json
 
 | 项 | agent-purge 的 `magpie-plugin/` | 本插件 |
 | --- | --- | --- |
-| 来源 | 只读 `~/.agent-purge/` | 可配多个目录 + `state/imports` + 内置专家包 |
+| 来源 | 只读 `~/.agent-purge/` | 包内专家包 + `state/imports`（只认导入） |
 | 判型 | 只有人设 markdown | 导出包 / DSH 插件包 / 人设 / 技能 / 文本 / 清单 |
 | 注入 | 一个人设 | 人设 + 显式启用的技能（含 9 位内置专家） |
 | 页面 | 人设选择 + 导入 | 条目列表 + 检查器 + 模式 + 回滚 + 校验记录 |
 | 快照 | 生成脚本写 `personas.js` | 后端每次扫描写 `catalog.js`，页面不读盘 |
 | 版本 | 无 | 同 id 新摘要算新版本，留两版可回滚 |
-| 与 agent-purge 的关系 | 读 `state.json` 但页面改不了模式 | **认它的 state.json**（mode/persona/overrides/disabledHarnesses），同时页面设置优先，两边都能改 |
+| 与 agent-purge 的关系 | 读 `state.json` 但页面改不了模式 | 默认不读；要读得显式设 `useAgentPurge: true` |
 | 状态可见性 | 无 | 顶部状态条直接回答「注不注、注谁、为什么没注」 |
 
 ## 版本
 
 | 版本 | 要点 |
 | --- | --- |
+| `0.4.1` | 修「选完模式又被换回」「确认注入点了没用」；导入区改成「选择 → 再点导入」两步并可选人设/技能；去掉来源目录与自动扫描，只扫包内与 `state/imports` |
 | `0.4.0` | 底座人设 `大肥鱼` 取代 Prompt Forge：不绑定任务，0–9 位专家随意组合；默认不再读上游 `state.json`（要读设 `useAgentPurge:true`）；默认来源只剩 `~/.magpie/purge`；模式下拉去掉「跟随上游」 |
 | `0.3.0` | 内置 9 位专家技能包（由本机 `dsh-purge` 的 23 份原子技能提炼）；内置条目带「内置」标、可停用不可删 |
 | `0.2.0` | 认 agent-purge 的 `state.json`（原生语义）；页面加「当前注入」状态条与可点的下一步；导入素材后不再一头雾水 |
