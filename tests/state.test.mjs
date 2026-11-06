@@ -22,7 +22,11 @@ test('sync 写出条目表与页面快照，可注入条目的正文随快照下
   mkdirSync(src)
   writeFileSync(join(src, 'anima.md'), '---\nid: anima\nname: Anima\n---\n正文在这里')
 
-  const { catalog, snapshot } = sync(here, { sources: [src], mode: 'append' }, { force: true })
+  // 不再有「来源目录」：唯一入口是导入（原件被复制进 state/imports 再扫描）。
+  const { catalog, snapshot } = sync(here, {
+    imports: [{ op: 'import', path: join(src, 'anima.md'), at: 1 }],
+    mode: 'append',
+  }, { force: true })
   assert.equal(catalog.entries.length, 1)
   assert.equal(catalog.entries[0].text, '正文在这里')
   assert.equal(snapshot.entries.length, 1)
@@ -35,19 +39,42 @@ test('sync 写出条目表与页面快照，可注入条目的正文随快照下
   assert.equal(loadCatalog({ catalogFile: join(here, 'state', 'catalog.json') }).entries.length, 1)
 })
 
-test('来源与刷新戳没变时不重扫', () => {
+test('导入与刷新戳都没变时不重扫', () => {
   const here = workspace()
   const src = join(here, 'src')
   mkdirSync(src)
   writeFileSync(join(src, 'a.md'), '---\nid: a\n---\nA')
-  const first = sync(here, { sources: [src], refreshAt: 1 }, { force: true })
-  const second = sync(here, { sources: [src], refreshAt: 1 })
+  const imports = [{ op: 'import', path: join(src, 'a.md'), at: 1 }]
+  const first = sync(here, { imports, refreshAt: 1 }, { force: true })
+  const second = sync(here, { imports, refreshAt: 1 })
   assert.equal(second.changed, false)
   assert.equal(second.catalog.version, first.catalog.version)
 
-  const forced = sync(here, { sources: [src], refreshAt: 2 })
+  const forced = sync(here, { imports, refreshAt: 2 })
   assert.equal(forced.changed, true)
   assert.ok(forced.catalog.version > first.catalog.version)
+})
+
+test('导入时指定的类型写进副本的 frontmatter，判定就按它来', () => {
+  const here = workspace()
+  const outside = join(here, 'outside')
+  mkdirSync(outside)
+  // 这份正文长得像人设（第二人称、无标题），但用户说它是技能——以用户的为准。
+  const file = join(outside, 'thing.md')
+  writeFileSync(file, '---\nid: thing\nname: 我的东西\n---\n你是某个东西。')
+
+  const { catalog, snapshot } = sync(here, {
+    imports: [{ op: 'import', path: file, at: 20, kind: 'skill' }],
+  }, { force: true })
+
+  const entry = snapshot.entries.find((e) => e.id === 'thing')
+  assert.ok(entry, '导入后应该有条目')
+  assert.equal(entry.kind, 'skill', '用户指定 skill 就该是 skill')
+  // 副本里确实写进去了：类型跟着文件走，不靠 options 里一份易失的映射。
+  const onDisk = readFileSync(catalog.imports[0].file, 'utf8')
+  assert.match(onDisk, /^kind: skill$/m)
+  // frontmatter 不进 system：正文还是干净的那一句。
+  assert.equal(catalog.entries.find((e) => e.id === 'thing').text, '你是某个东西。')
 })
 
 test('导入请求把文件复制进 state/imports，并作为来源出现在快照里', () => {
@@ -58,7 +85,6 @@ test('导入请求把文件复制进 state/imports，并作为来源出现在快
   writeFileSync(file, '---\nid: mine\nname: 导入的人设\n---\n导入正文')
 
   const { catalog, snapshot } = sync(here, {
-    sources: [join(here, 'empty')],
     imports: [{ op: 'import', path: file, at: 10 }],
   }, { force: true })
 

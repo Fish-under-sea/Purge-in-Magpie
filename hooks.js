@@ -83,10 +83,14 @@ export function createHook(root = here, { deadlineMs = 400, rescanMs = 30_000, w
   const scans = new Map()
   let lastWrite = 0
 
-  /** keyOf 是「这次配置要不要重扫」的粗指纹：来源目录 + 刷新戳。 */
+  /**
+   * keyOf 是「这次配置要不要重扫」的粗指纹：导入请求 + 刷新戳。
+   *
+   * 以前还带来源目录，现在不再扫用户磁盘目录，所以只剩这两样会真的改变条目表。
+   */
   const keyOf = (options = {}) => {
-    const sources = Array.isArray(options.sources) ? options.sources.filter((s) => typeof s === 'string' && s.trim()) : []
-    return [sources.join('|') || 'default', String(options.refreshAt ?? 0)].join('@')
+    const imports = Array.isArray(options.imports) ? options.imports.map((i) => `${i?.path}@${i?.at}`).join(',') : ''
+    return [imports, String(options.refreshAt ?? 0)].join('@')
   }
 
   /** scanOnce 按配置键去重：同一份配置同时只扫一次，不同配置并行。 */

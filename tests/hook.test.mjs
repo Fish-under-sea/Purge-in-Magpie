@@ -72,7 +72,15 @@ test('有人设时按模式改写并写下 last.json', async () => {
   writeFileSync(join(src, 'anima.md'), '---\nid: anima\nname: Anima\n---\n你是 Anima。')
   const hook = createHook(root)
   const body = { system: [{ type: 'text', text: 'You are Claude Code.\nBe brief.', cache_control: { type: 'ephemeral' } }] }
-  const { ctx, calls } = ctxOf({ options: { mode: 'replace', persona: 'anima', sources: [src], refreshAt: 12345 } })
+  // 入口只剩「导入」：文件必须先复制进 state/imports 才会被扫到。
+  const { ctx, calls } = ctxOf({
+    options: {
+      mode: 'replace',
+      persona: 'anima',
+      imports: [{ op: 'import', path: join(src, 'anima.md'), at: 1 }],
+      refreshAt: 12345,
+    },
+  })
   const out = await hook.onRequest(body, ctx)
   assert.ok(out, '有文本时应返回改过的 body')
   assert.equal(body.system.length, 2)

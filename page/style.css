@@ -555,6 +555,9 @@ pre.text {
   align-items: start;
 }
 .fold { min-width: 0; }
+/* 展开的那块占满整行：折叠态是一排等宽标题，展开后是表单，
+   挤在 220px 一列里连路径都填不下。 */
+.fold[open] { grid-column: 1 / -1; }
 .fold > summary {
   cursor: pointer;
   color: var(--muted);

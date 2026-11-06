@@ -103,7 +103,8 @@
 `agent-purge` 的 magpie 插件只认 `~/.agent-purge/` 的人设，页面也不能读盘。
 本插件把这条链补成三件事：
 
-1. **来源可以是任意目录**：默认 `~/.magpie/purge`（用 `PURGE_HOME` 可改），也能在页面里改成多个目录；
+1. **内容只从两条路来**：随包分发的 9 位专家 + 1 份底座人设，以及你自己**导入**的文件。
+   不再去翻磁盘上的任意目录——「它会不会自己扫我的硬盘」不该是个悬念；
 2. **认得四种东西**：DSH 会话导出包（`dsh-session-archive`）、DSH cordis 插件包、
    人设 / 技能 markdown、裸文本与 JSON 清单——坏包给出具体拒绝原因，不半途落盘；
 3. **页面能调配**：条目列表、检查器（含查看原文）、模式、启用、版本回滚、校验记录、最近一次生效记录。
@@ -120,7 +121,7 @@ magpie plugin add "./magpie-purge"
 magpie plugin list
 ```
 
-装好后 magpie 的侧栏会多出一页「破甲 · Purge」；插件页第一次打开时，后端会扫一遍来源目录，
+装好后 magpie 的侧栏会多出一页「破甲 · Purge」；插件页第一次打开时，后端会清点包内内容与已导入的文件，
 写出 `state/catalog.json` 与 `page/catalog.js` 两份快照，页面读的是后者。
 
 ## 配置
@@ -134,7 +135,6 @@ magpie plugin list
 | `agents` | 只对这些 magpie agent 生效，如 `["claude","codex"]`；空数组 = 全部 |
 | `enabled` | `{条目id: true/false}`：技能必须显式为 `true` 才注入；人设默认启用 |
 | `pinned` | `{条目id: 摘要}`：固定到某一版，网关用那一版的正文 |
-| `sources` | 来源目录列表；空数组用默认的 `~/.magpie/purge` |
 | `imports` | 页面写的导入请求（`{op, path, at}`），后端处理后复制进 `state/imports` |
 | `inline` | 页面里直接贴进来的人设/技能正文，不进磁盘 |
 | `gatewayTimeoutMs` | 钩子预算，默认 1500 ms（magpie 侧 100–10000） |
@@ -179,6 +179,17 @@ magpie plugin options magpie-purge '{"useAgentPurge":true}'
 - 底部「最近一次生效」：真跑过就写人设、技能、字符数；被放行就写**为什么**放行。
 
 导入的 `.zip` 是素材（会话导出包、DSH 插件包），**不会进 system**——检查器里会直说，别把素材当人设。
+
+### 导入分两步
+
+「导入」折叠区里：**先点「选择」挑文件**（路径会填进输入框，你能看见选中了什么），
+**再点「导入」才真的写进去**。一步到底容易误触——浏览器选完就落盘，人还没确认类型。
+
+- 框里直接粘**绝对路径**时走另一条路：后端把原件复制进 `state/imports`，原文件不动；
+- 「这份文件是」三选一（自动判断 / 人设 / 技能）：自动判断按 frontmatter 与正文结构猜，
+  猜错就在检查器里点**「改判为技能 / 人设」**，不必删了重导；
+- 删的时候用检查器里的**「删除导入」**（页面导入的）或**「删除副本」**（复制进 `state/imports` 的），
+  指向它的 `persona` / `enabled` / `pinned` 引用会一起清掉——否则会卡在「指定的人设不在了」。
 
 选中任一条目，检查器里有**「查看原文」**：正文（去掉 frontmatter 之后真正会拼进 system 的那段）
 随快照一起下发，点开就能读，不用去磁盘翻文件。超过 8000 字符会截断并标出总长度；
@@ -299,7 +310,7 @@ npm run preview:serve            # → http://127.0.0.1:55172
 node --test --test-isolation=none "tests/*.test.mjs"
 
 # 离线清点，看看本机 purge 目录里都认得什么
-node tools/scan.mjs --sources "D:\purge" --sources "~/.magpie/purge"
+node tools/scan.mjs --import "D:\purge\我的.md"
 
 # 只打条目表到 stdout（不写文件）
 node tools/scan.mjs --json

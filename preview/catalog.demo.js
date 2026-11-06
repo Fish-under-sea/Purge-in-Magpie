@@ -6,7 +6,6 @@ window.PURGE_CATALOG = {
   generatedAt: 1794561661000,
   sources: [
     { path: '（包内）skills + personas', ok: true, count: 10, error: '', bundled: true },
-    { path: 'C:/Users/you/.magpie/purge', ok: true, count: 1, error: '' },
   ],
   entries: [
     {
@@ -101,7 +100,7 @@ window.PURGE_CATALOG = {
       kind: 'persona',
       status: 'ok',
       reason: '',
-      source: { root: 'C:/Users/you/.magpie/purge', rel: 'personas/anima.md' },
+      source: { root: 'state/imports', rel: 'anima.md' },
       size: 1204,
       digest: 'ef84b655238b9a71',
       importedAt: 1794561661000,
@@ -118,7 +117,7 @@ window.PURGE_CATALOG = {
       kind: 'session-archive',
       status: 'ok',
       reason: '',
-      source: { root: 'C:/Users/you/.magpie/purge', rel: 'Anima loli tag.zip' },
+      source: { root: 'state/imports', rel: '5556.zip' },
       size: 177986,
       digest: '948c5f9615e0c1d2',
       importedAt: 1794561661000,

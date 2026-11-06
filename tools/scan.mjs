@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// 离线清点：不装进 magpie、不开 magpie，也能把 purge 目录扫一遍并写出快照。
+// 离线清点：不装进 magpie、不开 magpie，也能列出条目表并写出快照。
 //
-//   node tools/scan.mjs                       # 用默认来源（~/.agent-purge、~/.magpie/purge）
-//   node tools/scan.mjs --sources "D:\pa,D:\pb" --mode strict --persona anima
-//   node tools/scan.mjs --json                # 只把条目表打到 stdout，不写文件
+//   node tools/scan.mjs                              # 只清点包内内容 + 已导入的文件
+//   node tools/scan.mjs --import "D:\a.md" --mode strict --persona anima
+//   node tools/scan.mjs --json                       # 只把快照打到 stdout，不写文件
 //
 // 预览（preview/serve.mjs）用的就是它：同一条扫描路径，避免「预览一套、真跑另一套」。
 import { dirname, join } from 'node:path'
@@ -14,12 +14,15 @@ import { sync } from '../lib/state.mjs'
 const here = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 function parseArgs(argv) {
-  const out = { sources: [], mode: '', persona: '', json: false, force: true }
+  const out = { imports: [], mode: '', persona: '', json: false, force: true }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--json') out.json = true
-    else if (a === '--sources') out.sources.push(...String(argv[++i] || '').split(';').map((s) => s.replace(/^,+|,+$/g, '').trim()).filter(Boolean))
-    else if (a === '--mode') out.mode = String(argv[++i] || '').trim()
+    else if (a === '--import') {
+      // 每个 --import 一个文件；用合成时间戳让它们都算「待处理的导入请求」。
+      const path = String(argv[++i] || '').trim()
+      if (path) out.imports.push({ op: 'import', path, at: out.imports.length + 1 })
+    } else if (a === '--mode') out.mode = String(argv[++i] || '').trim()
     else if (a === '--persona') out.persona = String(argv[++i] || '').trim()
   }
   return out
@@ -27,10 +30,9 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv.slice(2))
 const options = {
-  sources: args.sources,
   mode: args.mode || 'off',
   persona: args.persona,
-  imports: [],
+  imports: args.imports,
   refreshAt: Date.now(),
 }
 const { catalog, snapshot } = sync(here, options, { force: args.force })

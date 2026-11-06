@@ -40,28 +40,27 @@
 
 <footer class="foot">
   <details class="fold">
-    <summary>导入与来源</summary>
+    <summary>导入</summary>
     <div class="fold-body">
       <label class="field">
         <span class="field-label">文件路径</span>
         <div class="inline-row">
-          <input id="import-path" type="text" placeholder="人设、技能、ZIP 导出包" aria-label="要导入的文件路径" spellcheck="false">
+          <input id="import-path" type="text" placeholder="留空点「选择」挑文件，或直接粘一个绝对路径" aria-label="要导入的文件路径" spellcheck="false">
+          <button id="import-pick" type="button">选择</button>
           <button id="import-run" type="button">导入</button>
         </div>
       </label>
-      <p class="note">只认 <code>.md</code> <code>.markdown</code> <code>.txt</code> <code>.json</code> <code>.zip</code>；复制进插件的 <code>state/imports</code> 后再清点，原文件不动。</p>
+      <p class="note" id="import-hint">只认 <code>.md</code> <code>.markdown</code> <code>.txt</code> <code>.json</code> <code>.zip</code>。选文件后路径会填进来，再点一次「导入」才真的导入。</p>
 
       <label class="field">
-        <span class="field-label">从本机选文件</span>
-        <input id="import-file" type="file" accept=".md,.markdown,.txt" aria-label="从本机选一个人设或技能文件">
+        <span class="field-label">这份文件是</span>
+        <div class="chips" id="import-kind" role="group" aria-label="导入类型">
+          <button type="button" class="chip" data-kind="auto" aria-pressed="true">自动判断</button>
+          <button type="button" class="chip" data-kind="persona" aria-pressed="false">人设</button>
+          <button type="button" class="chip" data-kind="skill" aria-pressed="false">技能</button>
+        </div>
       </label>
-      <p class="note">选文件时正文直接存进插件的 options（<code>inline</code>），不复制、不落盘。</p>
-
-      <label class="field">
-        <span class="field-label">来源目录（一行一个）</span>
-        <textarea id="sources" rows="3" spellcheck="false" aria-label="来源目录，一行一个" placeholder="D:\purge&#10;~/.magpie/purge"></textarea>
-      </label>
-      <button id="sources-save" type="button">保存来源并重扫</button>
+      <p class="note">「自动判断」按 frontmatter 与正文结构猜；猜错就在这里指定，它会覆盖判定结果。</p>
     </div>
   </details>
 

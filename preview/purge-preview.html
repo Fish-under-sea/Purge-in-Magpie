@@ -82,7 +82,6 @@ window.__PURGE_READY__ = {
   generatedAt: 1794561661000,
   sources: [
     { path: '（包内）skills + personas', ok: true, count: 10, error: '', bundled: true },
-    { path: 'C:/Users/you/.magpie/purge', ok: true, count: 1, error: '' },
   ],
   entries: [
     {
@@ -177,7 +176,7 @@ window.__PURGE_READY__ = {
       kind: 'persona',
       status: 'ok',
       reason: '',
-      source: { root: 'C:/Users/you/.magpie/purge', rel: 'personas/anima.md' },
+      source: { root: 'state/imports', rel: 'anima.md' },
       size: 1204,
       digest: 'ef84b655238b9a71',
       importedAt: 1794561661000,
@@ -194,7 +193,7 @@ window.__PURGE_READY__ = {
       kind: 'session-archive',
       status: 'ok',
       reason: '',
-      source: { root: 'C:/Users/you/.magpie/purge', rel: 'Anima loli tag.zip' },
+      source: { root: 'state/imports', rel: '5556.zip' },
       size: 177986,
       digest: '948c5f9615e0c1d2',
       importedAt: 1794561661000,
@@ -857,6 +856,9 @@ pre.text {
   align-items: start;
 }
 .fold { min-width: 0; }
+/* 展开的那块占满整行：折叠态是一排等宽标题，展开后是表单，
+   挤在 220px 一列里连路径都填不下。 */
+.fold[open] { grid-column: 1 / -1; }
 .fold > summary {
   cursor: pointer;
   color: var(--muted);
@@ -997,28 +999,27 @@ pre.text {
 
 <footer class="foot">
   <details class="fold">
-    <summary>导入与来源</summary>
+    <summary>导入</summary>
     <div class="fold-body">
       <label class="field">
         <span class="field-label">文件路径</span>
         <div class="inline-row">
-          <input id="import-path" type="text" placeholder="人设、技能、ZIP 导出包" aria-label="要导入的文件路径" spellcheck="false">
+          <input id="import-path" type="text" placeholder="留空点「选择」挑文件，或直接粘一个绝对路径" aria-label="要导入的文件路径" spellcheck="false">
+          <button id="import-pick" type="button">选择</button>
           <button id="import-run" type="button">导入</button>
         </div>
       </label>
-      <p class="note">只认 <code>.md</code> <code>.markdown</code> <code>.txt</code> <code>.json</code> <code>.zip</code>；复制进插件的 <code>state/imports</code> 后再清点，原文件不动。</p>
+      <p class="note" id="import-hint">只认 <code>.md</code> <code>.markdown</code> <code>.txt</code> <code>.json</code> <code>.zip</code>。选文件后路径会填进来，再点一次「导入」才真的导入。</p>
 
       <label class="field">
-        <span class="field-label">从本机选文件</span>
-        <input id="import-file" type="file" accept=".md,.markdown,.txt" aria-label="从本机选一个人设或技能文件">
+        <span class="field-label">这份文件是</span>
+        <div class="chips" id="import-kind" role="group" aria-label="导入类型">
+          <button type="button" class="chip" data-kind="auto" aria-pressed="true">自动判断</button>
+          <button type="button" class="chip" data-kind="persona" aria-pressed="false">人设</button>
+          <button type="button" class="chip" data-kind="skill" aria-pressed="false">技能</button>
+        </div>
       </label>
-      <p class="note">选文件时正文直接存进插件的 options（<code>inline</code>），不复制、不落盘。</p>
-
-      <label class="field">
-        <span class="field-label">来源目录（一行一个）</span>
-        <textarea id="sources" rows="3" spellcheck="false" aria-label="来源目录，一行一个" placeholder="D:\purge&#10;~/.magpie/purge"></textarea>
-      </label>
-      <button id="sources-save" type="button">保存来源并重扫</button>
+      <p class="note">「自动判断」按 frontmatter 与正文结构猜；猜错就在这里指定，它会覆盖判定结果。</p>
     </div>
   </details>
 
@@ -1095,6 +1096,10 @@ pre.text {
   let busy = false
   /** showingText 是「查看原文」的展开态；换条目时要收回去，否则新条目一进来就是展开的。 */
   let showingText = false
+  /** pendingFile 是「点过选择、还没点导入」的那个文件；两步导入靠它接上。 */
+  let pendingFile = null
+  /** importKind 是导入时选的类型：auto 交给判定，persona/skill 覆盖它。 */
+  let importKind = 'auto'
   /** confirmedSig 记「用户按下确认时的那套配置」；配置一变就失效，退回「确认注入」。 */
   let confirmedSig = ''
   /** modeMenuOpen 是模式下拉面板是否展开；每次重画都要记住，否则点一下就收。 */
@@ -1141,6 +1146,12 @@ pre.text {
   const inlineEntries = () => (Array.isArray(options.inline) ? options.inline : [])
   const findEntry = (id) => entries().find((e) => e.id === id) || inlineEntries().find((e) => e.id === id) || null
   const isEnabled = (id) => (options.enabled?.[id] !== undefined ? options.enabled[id] : findEntry(id)?.kind === 'persona')
+  /** defaultPersona 是「现在最能顶上的人设」：内置底座优先，其次第一个可用的人设。 */
+  const defaultPersona = () =>
+    entries().find((e) => e.kind === 'persona' && e.default === true) ||
+    entries().find((e) => e.kind === 'persona') ||
+    inlineEntries().find((e) => e.kind !== 'skill') ||
+    null
 
   // ---------- 与宿主说话 ----------
 
@@ -1157,11 +1168,18 @@ pre.text {
 
   async function flush() {
     if (!pendingSave || !bridge?.options?.set) return
+    // 记住这一轮自己刚写下去的键：宿主回包只用来「补全它规范化的字段」，
+    // 不许它把我们刚设的值盖回去——否则「选了模式又被换回」会反复发生。
+    const sent = { ...(pendingSave || {}) }
     const body = { ...options }
     pendingSave = null
     try {
       const saved = await bridge.options.set(body)
-      if (saved && typeof saved === 'object') options = { ...body, ...saved }
+      if (saved && typeof saved === 'object') {
+        const merged = { ...body, ...saved }
+        for (const key of Object.keys(sent)) merged[key] = body[key]
+        options = merged
+      }
     } catch (error) {
       say(`保存失败：${error?.message || error}`, 'bad')
     }
@@ -1374,8 +1392,9 @@ pre.text {
     const kind = KINDS[e.kind] || { label: e.kind }
     const kindCls = kindClass(e.kind)
     const inline = e.source?.root === 'inline' || e.meta?.format === 'inline'
-    // 只有复制进插件自己的 state/imports 的副本才谈得上「删副本」：来源目录里的原件不动。
-    const imported = Boolean(e.source?.root && /[\\/]state[\\/]imports\/?$/.test(e.source.root))
+    // 只有复制进插件自己的 state/imports 的副本才谈得上「删副本」：原件不动。
+    // root 可能是绝对路径（真机）也可能是相对路径（演示快照），所以不要求前导分隔符。
+    const imported = Boolean(e.source?.root && /(^|[\\/])state[\\/]imports\/?$/.test(e.source.root))
     const enabled = isEnabled(e.id)
     const pinned = options.pinned?.[e.id]
     const history = Array.isArray(e.history) ? e.history : []
@@ -1424,18 +1443,53 @@ pre.text {
         type: 'button',
         class: 'danger',
         onclick: () => {
+          // 删掉导入的条目时，指向它的引用也要一起清：否则 plan 会卡在 persona-missing，
+          // 用户还得再点一次「改用」才能恢复注入。
           const kept = inlineEntries().filter((x) => x.id !== e.id)
           const enabledNext = { ...(options.enabled || {}) }
           delete enabledNext[e.id]
-          save({ inline: kept, enabled: enabledNext, persona: options.persona === e.id ? '' : options.persona }, '已从页面导入里删掉')
+          const pinnedNext = { ...(options.pinned || {}) }
+          delete pinnedNext[e.id]
+          const fallback = kept.find((x) => x.kind !== 'skill')
+          save({
+            inline: kept,
+            enabled: enabledNext,
+            pinned: pinnedNext,
+            persona: options.persona === e.id ? (fallback?.id || '') : options.persona,
+          }, `已删除「${e.name}」`)
           if (selected === e.id) selected = ''
+          render()
         },
-      }, '删除'))
+      }, '删除导入'))
+      // 类型选错时能就地改：重扫猜出来的类型不一定对，硬编码成「人设」更糟。
+      actions.push(el('button', {
+        type: 'button',
+        class: 'quiet',
+        onclick: () => {
+          const nextKind = e.kind === 'skill' ? 'persona' : 'skill'
+          const next = inlineEntries().map((x) => (x.id === e.id ? { ...x, kind: nextKind } : x))
+          save({ inline: next }, `已改判为${nextKind === 'skill' ? '技能' : '人设'}`)
+          render()
+        },
+      }, e.kind === 'skill' ? '改判为人设' : '改判为技能'))
     } else if (imported) {
       actions.push(el('button', {
         type: 'button',
         class: 'danger',
-        onclick: () => importRequest({ op: 'delete', path: e.source.rel }, `已请求删除「${e.name}」的副本（只删插件自己的 state/imports）`),
+        onclick: () => {
+          // 删副本同时把指向它的引用清掉：留着会让 plan 卡在 persona-missing。
+          const enabledNext = { ...(options.enabled || {}) }
+          delete enabledNext[e.id]
+          const pinnedNext = { ...(options.pinned || {}) }
+          delete pinnedNext[e.id]
+          save({
+            enabled: enabledNext,
+            pinned: pinnedNext,
+            persona: options.persona === e.id ? '' : options.persona,
+          })
+          importRequest({ op: 'delete', path: e.source.rel }, `已请求删除「${e.name}」的副本（只删插件自己的 state/imports）`)
+          if (selected === e.id) selected = ''
+        },
       }, '删除副本'))
     }
 
@@ -1586,7 +1640,6 @@ pre.text {
     $('inspect').hidden = !picked
     renderRejects()
     renderLast()
-    renderSources()
   }
 
   /** MODES 是模式下拉的全部取值：没有「跟随上游」这一档，模式必须自己选。 */
@@ -1630,10 +1683,19 @@ pre.text {
       if (plan.blockedCode === 'no-mode' || plan.blockedCode === 'mode-off') {
         fix.push(el('button', { type: 'button', class: 'primary', onclick: () => fixed({ mode: 'replace' }, '模式改为 replace') }, '用 replace 开始注入'))
       }
-      if (plan.blockedCode === 'no-persona' || plan.blockedCode === 'persona-missing') {
+      // 旧人设被删掉后 options.persona 会一直指着它，卡在 persona-missing：
+      // 这个问题点「去看人设」永远绕不出来，得给一个直接改掉它的动作。
+      if (plan.blockedCode === 'persona-missing' && defaultPersona()) {
+        const next = defaultPersona()
         fix.push(el('button', {
           type: 'button',
           class: 'primary',
+          onclick: () => fixed({ persona: next.id }, `人设改为「${next.name}」`),
+        }, `改用「${next.name}」`))
+      }
+      if (plan.blockedCode === 'no-persona' || plan.blockedCode === 'persona-missing') {
+        fix.push(el('button', {
+          type: 'button',
           onclick: () => { filter = 'persona'; query = ''; render() },
         }, '去看人设'))
       }
@@ -1641,7 +1703,7 @@ pre.text {
         fix.push(el('button', {
           type: 'button',
           class: 'primary',
-          onclick: () => { $('import-file')?.focus(); $('import-file')?.click?.() },
+          onclick: () => { filter = 'persona'; query = ''; render() },
         }, '导入一份人设'))
       }
     }
@@ -1785,15 +1847,6 @@ pre.text {
     }, applied ? '已注入' : '确认注入')
   }
 
-  function renderSources() {
-    const el2 = $('sources')
-    if (!el2 || document.activeElement === el2) return
-    const list = Array.isArray(options.sources) && options.sources.length
-      ? options.sources
-      : (catalog?.sources || []).filter((s) => s.path && !/[\\/]state[\\/]imports\/?$/.test(s.path)).map((s) => s.path)
-    el2.value = list.join('\n')
-  }
-
   // ---------- 动作 ----------
 
   function importRequest(req, note) {
@@ -1856,37 +1909,84 @@ pre.text {
       renderPlan()
     })
 
-    $('import-run').addEventListener('click', () => {
-      const path = $('import-path').value.trim()
-      if (!path) return say('先填一个文件路径', 'bad')
-      importRequest({ op: 'import', path }, '已请求导入')
-      $('import-path').value = ''
+    // 导入分两步：先选文件（把路径填进输入框），再点「导入」才真的导入。
+    // 一步到底容易误触：浏览器选完就导入，用户还没确认类型就落盘了。
+    $('import-pick').addEventListener('click', () => {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = '.md,.markdown,.txt,.json,.zip'
+      input.addEventListener('change', () => {
+        const file = input.files?.[0]
+        if (!file) return
+        // 浏览器出于安全不暴露真实路径，只能拿到文件名。
+        // 这一步先把名字填进去，让人看见选中了什么；真正导入走下面那条 inline 通道。
+        $('import-path').value = file.name
+        pendingFile = file
+        say(`已选中「${file.name}」，再点一次「导入」就写入`, 'good')
+      })
+      input.click()
     })
 
-    $('import-file').addEventListener('change', async (e) => {
-      const file = e.target.files?.[0]
-      if (!file) return
+    $('import-run').addEventListener('click', async () => {
+      const typed = $('import-path').value.trim()
+      // 手填的是绝对路径：交给后端复制（原文件不动，副本进 state/imports）。
+      if (typed && !pendingFile) {
+        importRequest({ op: 'import', path: typed, kind: importKind }, '已请求导入')
+        $('import-path').value = ''
+        return
+      }
+      const file = pendingFile
+      if (!file) return say('先点「选择」挑一个文件，或在框里填绝对路径', 'bad')
       try {
         const raw = await file.text()
         if (raw.length > 64 * 1024) throw new Error('超过 64 KB：这么大的正文不该塞进 options')
         const id = (file.name.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9._-]+/g, '-') || 'inline').slice(0, 48)
         const kept = inlineEntries().filter((x) => x.id !== id)
-        const body = raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim()
         const fm = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+        const declared = fm?.[1]?.match(/^kind:\s*(persona|skill)\s*$/m)?.[1]
         const name = fm?.[1]?.match(/^name:\s*(.+)$/m)?.[1]?.replace(/^["']|["']$/g, '') || file.name.replace(/\.[^.]+$/, '')
-        save({ inline: [...kept, { id, name, kind: 'persona', text: body }] }, `已把「${name}」存进 options`)
-        e.target.value = ''
+        const body = raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim()
+        // 类型的优先级：用户明确选的 > 文件自己写的 > 猜。
+        const kind = importKind !== 'auto' ? importKind : declared || guessKind(body)
+        save({ inline: [...kept, { id, name, kind, text: body }] }, `已导入「${name}」（${kind === 'skill' ? '技能' : '人设'}）`)
+        pendingFile = null
+        $('import-path').value = ''
+        refreshAfterImport()
       } catch (error) {
         say(`导入失败：${error?.message || error}`, 'bad')
       }
     })
 
-    const sources = $('sources-save')
-    sources?.addEventListener('click', () => {
-      const list = $('sources').value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
-      save({ sources: list, refreshAt: Date.now() }, '来源目录已保存')
-      pollSnapshot('等待后端按新来源扫描…', 25)
-    })
+    // 导入类型：三选一，选中项自己管自己的 aria-pressed。
+    for (const chip of document.querySelectorAll('#import-kind .chip')) {
+      chip.addEventListener('click', () => {
+        importKind = chip.dataset.kind || 'auto'
+        for (const other of document.querySelectorAll('#import-kind .chip')) {
+          other.setAttribute('aria-pressed', other === chip ? 'true' : 'false')
+        }
+      })
+    }
+  }
+
+  /**
+   * guessKind 猜一份 .md 是人设还是技能。
+   *
+   * 判据来自本插件自己的两种文件长相：人设是完整第二人称，通常带 `## 你是什么`／`你是谁`；
+   * 技能是「某个领域的专家」，标题一般是 `# X专家`，正文多含命令与表格。
+   */
+  function guessKind(body) {
+    const text = String(body || '')
+    if (/^##\s*(你是什么|你是谁|你是谁？)/m.test(text)) return 'persona'
+    if (/^(你是|你现在是)/m.test(text) && !/^#\s/m.test(text)) return 'persona'
+    if (/^#\s/m.test(text) && /(\||命令|工具|参数)/.test(text)) return 'skill'
+    return 'persona'
+  }
+
+  /** refreshAfterImport 让新导入的条目立刻出现在列表里，并让后端按新 options 重扫。 */
+  function refreshAfterImport() {
+    save({ refreshAt: Date.now() })
+    render()
+    pollSnapshot('等后端按新导入重扫…', 20)
   }
 
   async function boot() {
