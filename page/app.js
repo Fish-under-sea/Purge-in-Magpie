@@ -11,13 +11,15 @@
   const bridge = window.magpie
   const $ = (id) => document.getElementById(id)
   const KINDS = {
-    'session-archive': { label: '会话导出包', color: 'var(--kind-session)' },
-    'cordis-plugin': { label: 'DSH 插件包', color: 'var(--kind-plugin)' },
-    persona: { label: '人设', color: 'var(--kind-persona)' },
-    skill: { label: '技能', color: 'var(--kind-skill)' },
-    manifest: { label: '清单', color: 'var(--kind-manifest)' },
-    text: { label: '文本', color: 'var(--kind-text)' },
+    'session-archive': { label: '会话导出包', cls: 'material' },
+    'cordis-plugin': { label: 'DSH 插件包', cls: 'material' },
+    persona: { label: '人设', cls: 'persona' },
+    skill: { label: '技能', cls: 'skill' },
+    manifest: { label: '清单', cls: 'material' },
+    text: { label: '文本', cls: 'skill' },
   }
+  /** 三类语义色：人设 / 技能 / 素材。六种类型各给一色会变成彩虹，信息量却没增加。 */
+  const kindClass = (kind) => KINDS[kind]?.cls || 'material'
   const MODE_HELP = {
     off: '请求原样放行，什么也不改。',
     strict: '整段可控 system 换成人设；原 system 里的工具说明文本也会一起没了。',
@@ -153,40 +155,124 @@
       host.replaceChildren(el('p', { class: 'empty', text: '没有匹配的条目。清掉搜索，或往来源目录里放点东西再扫一次。' }))
       return
     }
-    host.replaceChildren(...rows.map((e) => {
-      const kind = KINDS[e.kind] || { label: e.kind, color: 'var(--line)' }
-      const badge = e.status === 'rejected'
-        ? el('span', { class: 'badge reject', text: '拒绝' })
-        : !e.injectable ? null
-          : isEnabled(e.id) ? null : el('span', { class: 'badge off', text: '未启用' })
-      // 内置条目随包走：给个短标，让人一眼看出「这条不用我导入」
-      const builtin = e.builtin ? el('span', { class: 'badge builtin', text: '内置' }) : null
-      return el('button', {
-        type: 'button',
-        class: `row${e.builtin ? ' is-builtin' : ''}`,
-        role: 'option',
-        'aria-selected': selected === e.id,
-        onclick: () => { selected = e.id; render() },
-      },
-        el('span', { class: 'spine', style: `--spine:${kind.color}` }),
-        el('span', {},
-          el('span', { class: 'title' }, e.name, builtin),
-          el('span', { class: 'meta', text: `${kind.label} · ${e.source?.rel ?? ''}` }),
+    // 分组比逐行挂「内置」胶囊干净：内置是「这一整组都随包来」，说一次就够。
+    const groups = [
+      { key: 'builtin', label: '内置专家与技能', rows: rows.filter((e) => e.builtin) },
+      { key: 'mine', label: '我的来源', rows: rows.filter((e) => !e.builtin) },
+    ].filter((g) => g.rows.length)
+
+    const nodes = []
+    for (const group of groups) {
+      nodes.push(el('div', { class: 'group-head' },
+        el('span', { text: group.label }),
+        el('span', { class: 'n', text: String(group.rows.length) }),
+      ))
+      for (const e of group.rows) nodes.push(rowOf(e))
+    }
+    host.replaceChildren(...nodes)
+  }
+
+  /** rowOf 画一行条目；状态只用「未启用 / 已启用 / 拒绝」三种胶囊，不再叠「内置」。 */
+  function rowOf(e) {
+    const kind = KINDS[e.kind] || { label: e.kind }
+    const badge = e.status === 'rejected'
+      ? el('span', { class: 'badge reject', text: '拒绝' })
+      : !e.injectable ? null
+        : isEnabled(e.id) ? null : el('span', { class: 'badge off', text: '未启用' })
+    return el('button', {
+      type: 'button',
+      class: 'row',
+      role: 'option',
+      'aria-selected': selected === e.id,
+      onclick: () => { selected = selected === e.id ? '' : e.id; render() },
+    },
+      el('span', { class: 'spine', style: `--spine:var(--kind-${kindClass(e.kind)})` }),
+      el('span', {},
+        el('span', { class: 'title', text: e.name }),
+        el('span', { class: 'meta', text: `${kind.label} · ${e.builtin ? '随插件' : e.source?.rel ?? ''}` }),
+      ),
+      el('span', { class: 'side' }, e.version > 1 ? `v${e.version}` : '', badge || '',
+        el('span', { class: 'meta', text: e.injectable ? `${e.chars || 0} 字` : fmtSize(e.size || 0) })),
+    )
+  }
+
+  /**
+   * renderAssembly 是右栏默认内容：把「这次会拼成什么」按顺序摊开。
+   *
+   * 为什么值得占这一整栏：这个插件的产物就是一段被拼起来的 system 文本，
+   * 但它平时在请求里，用户看不见。摊开成积木（人设 → 技能 → 宿主原文），
+   * 一眼能看出顺序对不对、谁没启用、总量吃不吃得下预算。
+   */
+  function renderAssembly() {
+    const host = $('assembly')
+    const plan = catalog?.plan
+    const last = catalog?.last
+    if (!plan) {
+      host.replaceChildren(el('h2', {}, '注入组装'))
+      host.append(el('p', { class: 'empty', text: '还没有判定：等后端第一次扫描。' }))
+      return
+    }
+    const personaEntry = findEntry(plan.personaId)
+    const skills = (plan.skills || []).map((s) => findEntry(s.id) || s)
+    const total = (personaEntry?.chars || 0) + skills.reduce((n, s) => n + (s.chars || 0), 0)
+
+    const rows = []
+    if (plan.ready && personaEntry) {
+      rows.push(stackRow('01', 'persona', personaEntry.name, personaEntry.meta?.description || '人设正文', `${personaEntry.chars || 0} 字`))
+      skills.forEach((s, i) => rows.push(stackRow(String(i + 2).padStart(2, '0'), 'skill', s.name, s.meta?.description || '技能正文', `${s.chars || 0} 字`)))
+      rows.push(el('div', { class: 'stack-row is-host' },
+        el('span', { class: 'ord', text: String(skills.length + 2).padStart(2, '0') }),
+        el('span', { class: 'body' },
+          el('span', { class: 'name', text: '宿主自己的 system' }),
+          el('span', { class: 'desc', text: plan.mode === 'strict' ? 'strict：整段换掉，不会保留' : '原样保留，接在上面这些之后' }),
         ),
-        el('span', { class: 'side' }, e.version > 1 ? `v${e.version}` : '', badge || '',
-          el('span', { class: 'meta', text: e.injectable ? `${e.chars || 0} 字` : fmtSize(e.size || 0) })),
-      )
-    }))
+        el('span', { class: 'size', text: plan.mode === 'strict' ? '—' : '保留' }),
+      ))
+    } else {
+      rows.push(el('div', { class: 'stack-row is-empty' },
+        el('span', { class: 'ord', text: '—' }),
+        el('span', { class: 'body' },
+          el('span', { class: 'name', text: '还没有可组装的内容' }),
+          // 具体原因在顶部状态条里已经说过一遍，这里只说「这里将来会显示什么」，不重复。
+          el('span', { class: 'desc', text: '按上面的提示处理后，这段会显示人设与技能的拼装顺序' }),
+        ),
+        el('span', { class: 'size', text: '' }),
+      ))
+    }
+
+    host.replaceChildren(...[
+      el('h2', {}, '注入组装',
+        el('span', { class: 'h2-sub', text: plan.ready ? '下一次请求会拼成这段' : '这次放行，下面是原因' })),
+      el('div', { class: 'stack-view' }, ...rows),
+      el('div', { class: 'stack-foot' },
+        el('span', { text: plan.ready ? `合计 ${total.toLocaleString('zh-CN')} 字符 · 预算 65,536` : `模式 ${plan.mode}` }),
+        last?.at ? el('span', { text: last.skipped ? `上次 ${fmtTime(last.at)} · 未注入` : `上次 ${fmtTime(last.at)} · ${last.agent || '—'}` }) : null,
+      ),
+    ].filter(Boolean))
+  }
+
+  /** stackRow 是组装里的一层：序号 + 名字 + 一句描述 + 体积。 */
+  function stackRow(ord, cls, name, desc, size) {
+    return el('div', { class: `stack-row is-${cls}` },
+      el('span', { class: 'ord', text: ord }),
+      el('span', { class: 'body' },
+        el('span', { class: 'name', text: name }),
+        el('span', { class: 'desc', text: desc }),
+      ),
+      el('span', { class: 'size', text: size }),
+    )
   }
 
   function renderInspector() {
     const host = $('inspect')
     const e = findEntry(selected)
     if (!e) {
-      host.replaceChildren(el('p', { class: 'empty', text: '左边选一个条目：这里显示它是什么、从哪来、能不能注入，以及上一版在哪。' }))
+      // 没选中时让位给「组装预览」：右栏不留一片空白，那是最浪费的一屏。
+      host.replaceChildren()
       return
     }
-    const kind = KINDS[e.kind] || { label: e.kind, color: 'var(--line)' }
+    const kind = KINDS[e.kind] || { label: e.kind }
+    const kindCls = kindClass(e.kind)
     const inline = e.source?.root === 'inline' || e.meta?.format === 'inline'
     // 只有复制进插件自己的 state/imports 的副本才谈得上「删副本」：来源目录里的原件不动。
     const imported = Boolean(e.source?.root && /[\\/]state[\\/]imports\/?$/.test(e.source.root))
@@ -213,7 +299,7 @@
     if (pinned) {
       actions.push(el('button', {
         type: 'button',
-        class: 'ghost',
+        class: 'quiet',
         onclick: () => {
           const next = { ...(options.pinned || {}) }
           delete next[e.id]
@@ -261,16 +347,13 @@
 
     // replaceChildren 会把 null 变成 "null" 字符串，所以先过滤。
     host.replaceChildren(...[
-      el('div', { class: 'head' },
-        el('div', {},
-          el('h2', {} , e.name, e.builtin ? el('span', { class: 'badge builtin', text: '内置' }) : null),
-          el('p', { class: 'note', text: e.meta?.description || (e.injectable ? '可写进 system 段的人设/技能文本。' : NOT_INJECTABLE) }),
-        ),
-        el('span', { class: 'kind', style: `color:${kind.color}` }, kind.label),
+      el('div', {},
+        el('h2', {}, e.name, el('span', { class: `kind ${kindCls}` }, kind.label)),
+        el('p', { class: 'sub-note', text: e.meta?.description || (e.injectable ? '可写进 system 段的人设/技能文本。' : NOT_INJECTABLE) }),
       ),
       // 内置专家：说清它是随包来的，不是用户导入的，所以没有「删除」只有「停用」
       e.builtin
-        ? el('p', { class: 'note', text: `随插件分发，${e.meta?.whenToUse ? `何时用：${e.meta.whenToUse}` : '不需要导入，启用即可。'}${e.meta?.source ? `（提炼自 ${e.meta.source}）` : ''}` })
+        ? el('p', { class: 'sub-note', text: `随插件分发，${e.meta?.whenToUse ? `何时用：${e.meta.whenToUse}` : '不需要导入，启用即可。'}${e.meta?.source ? `（提炼自 ${e.meta.source}）` : ''}` })
         : null,
       el('dl', { class: 'facts' },
         el('dt', { text: '来源' }), el('dd', { text: e.source?.root === 'inline' ? '页面导入（存在 options 里）' : e.builtin ? '插件内置 skills/' : e.source?.root || '—' }),
@@ -300,6 +383,8 @@
   function renderRejects() {
     const host = $('rejects')
     const rows = Array.isArray(catalog?.rejected) ? catalog.rejected : []
+    const badge = $('rejects-count')
+    if (badge) badge.textContent = rows.length ? `${rows.length}` : ''
     if (!rows.length) {
       const n = entries().length
       host.replaceChildren(el('li', {
@@ -346,7 +431,12 @@
     renderPlan()
     renderFilters()
     renderList()
+    // 选着条目就看详情，没选就回组装预览：右栏永远有东西，不留空屏。
+    renderAssembly()
     renderInspector()
+    const picked = Boolean(findEntry(selected))
+    $('assembly').hidden = picked
+    $('inspect').hidden = !picked
     renderRejects()
     renderLast()
     renderSources()
@@ -412,14 +502,14 @@
 
     const rows = [
       el('span', { class: 'dot' }),
-      el('span', { class: ready ? 'who' : 'empty' }, ready
+      el('span', { class: ready ? 'who' : 'who is-empty' }, ready
         ? `下一次 agent 请求会注入「${plan.personaName || plan.personaId}」`
         : '现在不会注入：请求原样放行'),
       el('span', { class: 'actions' },
         el('span', { class: 'tag', text: `模式 ${plan.mode} · ${fromText[plan.modeFrom] || plan.modeFrom || '默认'}` }),
         ready && plan.skills?.length ? el('span', { class: 'tag', text: `技能 ${plan.skills.length} 条` }) : null,
         ...fix,
-        el('button', { type: 'button', class: 'ghost', onclick: () => refresh() }, '重扫确认'),
+        el('button', { type: 'button', class: 'quiet', onclick: () => refresh() }, '重扫确认'),
       ),
       el('span', { class: 'why', text: ready
         ? `人设来源：${fromText[plan.personaFrom] || plan.personaFrom}${catalog?.purge?.bound ? '；agent-purge 的 state.json 已读到' : '；没读到 agent-purge 的 state.json'}`

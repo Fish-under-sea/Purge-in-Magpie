@@ -1,6 +1,9 @@
 /* 破甲 · Purge 的页面样式。
    颜色一律吃 magpie 自己的主题变量（--magpie-*），没给就用中和的回落值：
-   页面在 magpie 窗口里，跟随宿主明暗是硬要求，不能自带一套排版。 */
+   页面在 magpie 窗口里，跟随宿主明暗是硬要求。
+
+   没有按「六种类型各给一个颜色」上色——那会变成彩虹。
+   只留三类语义色（人设 / 技能 / 素材），其余全部让给墨色与分隔线。 */
 :root {
   --ink: var(--magpie-fg, #1c1d21);
   --muted: var(--magpie-muted, #6b7280);
@@ -10,12 +13,11 @@
   --accent: var(--magpie-accent, #3563e9);
   --accent-soft: var(--magpie-accent-soft, #e6edfd);
   --mono: var(--magpie-code, ui-monospace, "Cascadia Mono", "SF Mono", Menlo, monospace);
+
   --kind-persona: #6f5bd6;
   --kind-skill: #1f8f9c;
-  --kind-session: #a8752a;
-  --kind-plugin: #2f8f5b;
-  --kind-manifest: #757a85;
-  --kind-text: #8a6a2f;
+  --kind-material: #8a7f70;
+  --ok: #2f8f5b;
   --danger: #c25556;
 }
 
@@ -23,39 +25,73 @@
 html { background: var(--bg); color: var(--ink); }
 body {
   margin: 0;
-  padding: 16px 24px 28px;
-  font: 13px/1.5 var(--magpie-font, -apple-system, "Segoe UI", "Noto Sans SC", system-ui, sans-serif);
-  max-width: 1120px;
+  padding: 20px 24px calc(40px + env(safe-area-inset-bottom));
+  font: 13px/1.55 var(--magpie-font, -apple-system, "Segoe UI", "Noto Sans SC", system-ui, sans-serif);
+  max-width: 1160px;
   touch-action: manipulation;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ---------- 顶部 ---------- */
-.bar { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.brand { display: flex; gap: 10px; align-items: center; }
-.mark { width: 24px; height: 24px; flex: none; }
-h1 { font-size: 18px; font-weight: 600; margin: 0; letter-spacing: .01em; }
-.sub { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
-.controls { display: grid; justify-items: end; gap: 4px; }
-.mode-label { font-size: 12px; color: var(--muted); }
-.mode-row { display: flex; gap: 8px; align-items: center; }
-#mode { min-width: 190px; }
-.hint { max-width: 46ch; color: var(--muted); font-size: 12px; line-height: 1.45; text-align: right; }
+.top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 20px;
+  align-items: center;
+}
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.mark { width: 28px; height: 28px; flex: none; border-radius: 8px; }
+.brand-text { min-width: 0; }
+h1 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 620;
+  letter-spacing: .005em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.brand-tail {
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 2px;
+}
+.tagline { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
 
+.top-controls { display: grid; gap: 4px; justify-items: end; min-width: 0; }
+.controls-row { display: flex; align-items: flex-end; gap: 10px; }
+.field { display: grid; gap: 4px; }
+.field-label { font-size: 12px; color: var(--muted); }
+#mode { min-width: 196px; }
+/* 模式说明跟着下拉走：它解释的是这个选择，不该飘到页面左边去。
+   max-width 用 100% 而不是固定值：窄屏上固定值会让这一行把整页撑出横向滚动。 */
+.top-hint {
+  margin: 0;
+  max-width: 100%;
+  text-align: right;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 控件 ---------- */
 button {
   font: inherit;
   color: var(--ink);
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 5px 11px;
-  min-height: 28px;
+  padding: 5px 12px;
+  min-height: 30px;
   cursor: pointer;
+  transition: border-color .12s ease, background-color .12s ease;
 }
 button:hover:not(:disabled) { border-color: var(--muted); }
 button:disabled { opacity: .5; cursor: default; }
 button.primary { background: var(--accent); border-color: transparent; color: #fff; }
-button.ghost { background: transparent; }
+button.quiet { background: transparent; }
 button.danger { color: var(--danger); border-color: color-mix(in oklab, var(--danger) 40%, var(--line)); }
+
 select, input[type="search"], input[type="text"], textarea {
   font: inherit;
   color: var(--ink);
@@ -66,165 +102,290 @@ select, input[type="search"], input[type="text"], textarea {
 }
 @media (max-width: 620px) { select, input, textarea { font-size: 16px; } }
 textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 12px; line-height: 1.6; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.boundary {
-  margin: 12px 0 16px;
-  padding: 8px 12px;
-  border-left: 2px solid var(--accent);
-  background: color-mix(in oklab, var(--accent-soft) 60%, transparent);
-  color: var(--ink);
-  font-size: 12.5px;
-  border-radius: 0 8px 8px 0;
-}
-
-/* 当前注入：这一行回答「到底注不注、注谁、为什么没注」 */
+/* ---------- 注入状态：整页最该被看见的一行 ---------- */
 .plan {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr) max-content;
-  gap: 4px 12px;
+  gap: 4px 14px;
   align-items: center;
-  margin: 0 0 16px;
-  padding: 10px 13px;
+  margin: 16px 0 20px;
+  padding: 14px 16px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--card);
 }
-.plan[data-state="ready"] { border-color: color-mix(in oklab, var(--kind-plugin) 45%, var(--line)); }
-.plan[data-state="blocked"] { border-color: color-mix(in oklab, var(--danger) 35%, var(--line)); }
-.plan .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
-.plan[data-state="ready"] .dot { background: var(--kind-plugin); }
+.plan[data-state="ready"] { border-color: color-mix(in oklab, var(--ok) 42%, var(--line)); }
+.plan[data-state="blocked"] { border-color: color-mix(in oklab, var(--danger) 34%, var(--line)); }
+.plan .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.plan[data-state="ready"] .dot { background: var(--ok); }
 .plan[data-state="blocked"] .dot { background: var(--danger); }
-.plan .who { font-weight: 500; }
-.plan .why { grid-column: 2 / -1; color: var(--muted); font-size: 12px; }
+.plan .who { font-size: 15px; font-weight: 560; }
+.plan .who.is-empty { color: var(--muted); font-weight: 400; }
+.plan .why { grid-column: 2 / -1; color: var(--muted); font-size: 12.5px; }
+.plan .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .plan .tag {
   font-size: 12px;
-  padding: 1px 7px;
+  padding: 2px 9px;
   border-radius: 999px;
   border: 1px solid var(--line);
   color: var(--muted);
   white-space: nowrap;
 }
-.plan .actions { display: flex; gap: 8px; align-items: center; }
-.plan .empty { color: var(--muted); }
+.plan .tag b { color: var(--ink); font-weight: 560; }
 
-/* ---------- 主体：左列表 / 右检查器 ---------- */
-.grid {
+/* ---------- 主体：左列表 / 右组装 ---------- */
+.work {
   display: grid;
-  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
-  gap: 22px;
+  grid-template-columns: minmax(300px, 352px) minmax(0, 1fr);
+  gap: 26px;
   align-items: start;
 }
-@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 900px) { .work { grid-template-columns: minmax(0, 1fr); } }
 
-.rail-head { display: grid; gap: 8px; margin-bottom: 12px; }
-.rail-head input { width: 100%; }
+.rail { min-width: 0; }
+.rail-tools { display: grid; gap: 10px; }
+.rail-tools input { width: 100%; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
   font-size: 12px;
-  padding: 4px 10px;
-  min-height: 24px;
+  padding: 3px 10px;
+  min-height: 26px;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: transparent;
   color: var(--muted);
 }
 .chip[aria-pressed="true"] { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
-.count { margin: 0; color: var(--muted); font-size: 12px; }
+.rail-count { margin: 12px 0 8px; color: var(--muted); font-size: 12px; }
 
 .list { display: grid; gap: 1px; border-top: 1px solid var(--line); }
+/* 桌面端列表自己滚：条目多时不让整页跟着长，右栏也不会剩一大片空白。
+   窄屏不做嵌套滚动——那比页面滚动难用。 */
+@media (min-width: 901px) {
+  .list { max-height: min(58vh, 540px); overflow-y: auto; overscroll-behavior: contain; }
+}
+.group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 2px 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.group-head:first-child { padding-top: 8px; }
+.group-head .n { font-variant-numeric: tabular-nums; }
+
 .row {
   display: grid;
   grid-template-columns: 3px minmax(0, 1fr) auto;
-  gap: 9px;
-  align-items: start;
+  gap: 10px;
+  align-items: center;
   width: 100%;
   text-align: left;
-  padding: 9px 8px 9px 0;
+  padding: 9px 10px 9px 0;
   border: 0;
   border-bottom: 1px solid var(--line);
   border-radius: 0;
   background: transparent;
 }
-.row > span { min-width: 0; }
-.row:hover { background: color-mix(in oklab, var(--card) 70%, transparent); }
+.row:hover { background: color-mix(in oklab, var(--card) 78%, transparent); }
 .row[aria-selected="true"] { background: var(--accent-soft); }
+.row > span { min-width: 0; }
 .row .spine { align-self: stretch; border-radius: 2px; background: var(--spine, var(--line)); }
-.row .title { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row .meta { display: block; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row .side { text-align: right; color: var(--muted); font-size: 12px; white-space: nowrap; }
-.row .badge { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
+.row .title {
+  display: block;
+  font-weight: 520;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row .meta {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row .side {
+  text-align: right;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+/* 只在「未启用 / 已启用 / 拒绝」三种状态给胶囊；「内置」靠分组标题说，不逐行重复 */
+.row .badge {
+  display: inline-block;
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  margin-left: 6px;
+}
 .badge.reject { color: var(--danger); }
-.badge.dup { color: var(--kind-manifest); }
 .badge.off { color: var(--muted); }
-/* 内置：随包分发的专家，用「已装」的语义色，别和「未启用」混成一个灰 */
-.badge.builtin { color: var(--kind-plugin); margin-left: 6px; }
-.row.is-builtin .title { font-weight: 600; }
+.badge.on { color: var(--ok); }
 
-/* ---------- 检查器 ---------- */
-.inspect { min-width: 0; min-height: 240px; }
-.inspect .empty { color: var(--muted); padding: 28px 2px; }
-.head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.head h2 { font-size: 16px; font-weight: 600; margin: 0 0 4px; overflow-wrap: anywhere; }
+/* ---------- 右栏：组装 / 详情 ---------- */
+.panel { min-width: 0; min-height: 320px; }
+
+.panel h2 {
+  margin: 0 0 14px;
+  font-size: 15px;
+  font-weight: 580;
+  letter-spacing: .005em;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.panel .h2-sub { color: var(--muted); font-size: 12px; font-weight: 400; }
+
+/* 组装预览：把「会拼成什么」摊开成按顺序的积木，这是本页最有辨识度的一块 */
+.stack-view { display: grid; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+.stack-row {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  gap: 12px;
+  align-items: baseline;
+  padding: 11px 14px;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
+.stack-row:last-child { border-bottom: 0; }
+.stack-row .ord {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.stack-row .body { min-width: 0; }
+.stack-row .name { font-weight: 520; display: block; }
+.stack-row .desc {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stack-row .size { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.stack-row.is-persona { box-shadow: inset 3px 0 0 var(--kind-persona); }
+.stack-row.is-skill { box-shadow: inset 3px 0 0 var(--kind-skill); }
+.stack-row.is-host { box-shadow: inset 3px 0 0 var(--line); color: var(--muted); }
+.stack-row.is-empty { color: var(--muted); }
+
+.stack-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 详情 */
 .kind { font-size: 12px; padding: 2px 9px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
-.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 12px 0 0; font-size: 12px; }
+.kind.persona { color: var(--kind-persona); }
+.kind.skill { color: var(--kind-skill); }
+.kind.material { color: var(--kind-material); }
+.sub-note { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
+
+.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 16px 0 0; font-size: 12.5px; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; overflow-wrap: anywhere; min-width: 0; }
 .facts code { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
 
-.actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; }
-.note { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
-.warn { color: var(--danger); font-size: 12px; margin: 8px 0 0; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
+.warn { color: var(--danger); font-size: 12.5px; margin: 10px 0 0; }
+.note { color: var(--muted); font-size: 12.5px; margin: 8px 0 0; }
 
-.budget { margin: 14px 0 0; }
+.budget { margin: 16px 0 0; }
 .budget .track { height: 4px; border-radius: 2px; background: var(--line); }
 .budget .fill { height: 100%; min-width: 3px; border-radius: 2px; background: var(--accent); }
-.budget .label { font-size: 12px; color: var(--muted); margin-top: 5px; }
+.budget .label { font-size: 12px; color: var(--muted); margin-top: 6px; }
 
 pre.text {
-  margin: 12px 0 0;
-  padding: 10px 12px;
-  max-height: 260px;
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  max-height: 280px;
   overflow: auto;
   font-family: var(--mono);
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.6;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 10px;
   white-space: pre-wrap;
 }
 
-/* ---------- 底部三栏 ---------- */
+.empty {
+  color: var(--muted);
+  font-size: 12.5px;
+  padding: 16px 2px;
+  margin: 0;
+}
+
+/* ---------- 底部：四块可折叠，平时只占一行 ---------- */
 .foot {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 22px;
-  margin-top: 26px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 24px;
+  margin-top: 30px;
   padding-top: 16px;
   border-top: 1px solid var(--line);
+  align-items: start;
 }
-@media (max-width: 860px) { .foot { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 620px) {
-  body { padding: 14px 14px 22px; }
-  .bar { align-items: flex-start; }
-  .controls { justify-items: start; }
-  .hint { text-align: left; max-width: none; }
-  .boundary { font-size: 12px; }
+.fold { min-width: 0; }
+.fold > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 6px 0;
+  min-height: 32px;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
-.foot h2 { font-size: 12px; font-weight: 600; margin: 0 0 8px; color: var(--muted); }
-.foot .stack { display: grid; gap: 8px; }
-.foot .row2 { display: flex; gap: 8px; }
-.foot .row2 input { flex: 1; min-width: 0; }
-.foot ul { margin: 0; padding-left: 16px; color: var(--muted); font-size: 12px; }
-.foot li { margin-bottom: 4px; overflow-wrap: anywhere; }
-.foot code { font-family: var(--mono); }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before {
+  content: "";
+  width: 0; height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  transition: transform .12s ease;
+}
+.fold[open] > summary { color: var(--ink); }
+.fold[open] > summary::before { transform: rotate(90deg); }
+.fold-count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.fold-body { display: grid; gap: 8px; padding: 6px 0 4px; }
+.fold-body .inline-row { display: flex; gap: 8px; }
+.fold-body .inline-row input { flex: 1; min-width: 0; }
+.fold-body ul { margin: 0; padding-left: 16px; color: var(--muted); font-size: 12px; }
+.fold-body li { margin-bottom: 5px; overflow-wrap: anywhere; }
+.fold-body code { font-family: var(--mono); }
+.stack { display: grid; gap: 6px; }
 
-.status { margin: 14px 0 0; font-size: 12px; color: var(--muted); }
+.status { margin: 16px 0 0; font-size: 12.5px; color: var(--muted); }
 .status[data-tone="bad"] { color: var(--danger); }
-.status[data-tone="good"] { color: var(--kind-plugin); }
+.status[data-tone="good"] { color: var(--ok); }
 
 @media (prefers-reduced-motion: no-preference) {
-  .inspect { animation: rise .18s ease-out; }
-  @keyframes rise { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+  .panel > div:not(:empty) { animation: rise .16s ease-out; }
+  @keyframes rise { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+}
+@media (max-width: 620px) {
+  body { padding: 16px 16px 32px; }
+  .top { grid-template-columns: minmax(0, 1fr); }
+  .top-controls { justify-content: flex-start; }
+  .plan { grid-template-columns: max-content minmax(0, 1fr); }
+  .plan .actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .plan .why { grid-column: 1 / -1; }
 }
