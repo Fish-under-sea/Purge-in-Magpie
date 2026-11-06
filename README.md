@@ -19,8 +19,8 @@
   `stripIdentity` 去身份策略都来自它；`magpie-plugin/` 子目录是这条链的起点。没有它就没有这个包。
 - **[yetone/magpie](https://github.com/yetone/magpie)** — 页面插件与异步网关钩子的宿主契约
   （`magpie.page` / `magpie.options` / `page/_magpie/bridge.js` / `onRequest(body, ctx)`）由 magpie 提供。
-- **本机 `dsh-purge` 红队技能库** — 内置的 9 位专家由它的 23 份原子技能（`skills/redteam/`）提炼而来，
-  逐条注明原文件。底座人设 `大肥鱼` 是为本插件新写的（v2 起替代了原先内化的 Prompt Forge）。
+- **本机 `dsh-purge` 红队技能库** — 内置的 22 份技能来自它的 `skills/redteam/`（**原文照搬，逐字未改**），
+  逐条注明原文件。底座人设 `大肥鱼` 是为本插件新写的。
 
 完整来源与改动范围见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)；上游 MIT 原文原样保留在
 [`LICENSE`](LICENSE) 里（Copyright (c) 2026 ZiChuanLan）。
@@ -57,31 +57,49 @@
 **我们多做的两件事**（上游没有）：
 
 - **技能段**：上游只注入一个人设；我们把显式启用的技能按 `## 技能：<名字>` 拼在人设后面。
-- **多来源与内置包**：上游只读 `~/.agent-purge/`，人设列表靠 `gen-personas.mjs` 生成静态 `page/personas.js`；我们扫多个目录、内置 9 位专家，页面不读盘。
+- **多来源与内置包**：上游只读 `~/.agent-purge/`，人设列表靠 `gen-personas.mjs` 生成静态 `page/personas.js`；我们扫多个目录、内置 22 份技能，页面不读盘。
 
 **所以「打磨提示词」这件事的真实边界**：能打磨的是**注入通道**（落点、去身份、拼接顺序、预算），
-不是**内容**——内容是你自己写的人设与技能。本插件的 9 位专家与底座人设「大肥鱼」属于「内容」，随包分发；
+不是**内容**——内容是你自己写的人设与技能。本插件的 22 份技能与底座人设「大肥鱼」属于「内容」，随包分发；
 上游的 `neutral.md` 属于「起步内容」，我们没抄它，因为它只是一个最小骨架，不是这个插件的价值所在。
 
 ## 内置专家技能包
 
-装好就有，不用去别处找 md 再导入。`skills/` 里是 9 位专家，`personas/` 里是 1 份人设，随包分发、
-随包更新；它们在页面里带「内置」标，可启用可停用，但删不掉（不是用户导入的）。
+装好就有，不用去别处找 md 再导入。`skills/` 里是 22 份技能（**原文照搬**，逐字未改），
+`personas/` 里是 1 份底座人设，随包分发、随包更新；它们在页面里带「内置」标，可启用可停用，
+但删不掉（不是用户导入的）。
 
-| 专家 | 管什么 | 原文来源 |
+文件名与显示名都汉化了；`id` 保持 ASCII，因为 id 要稳定的当 `options.enabled` 的键。
+
+### 按作业顺序
+
+| 技能 | 管什么 | 原文文件 |
 | --- | --- | --- |
-| **交战指挥** `engagement-lead` | 开工前置、资源要齐、降级口径、按阶段调度其余八位 | `redteam-setup` |
-| **侦察测绘专家** `recon-specialist` | 被动源 + FOFA 测绘 + ProjectDiscovery 流水线 → 资产全景 | `passive-recon`、`active-scan`、`web-fingerprint`、`asset-correlation`、`recon-pipeline`、`fofa-recon` |
-| **入口猎手** `entry-hunter` | 目录爆破找后台/备份/泄露，浏览器自动化抓 SPA 与接口 | `dir-bruteforce`、`browser-automation`、`kimi-webbridge` |
-| **漏洞打击专家** `vuln-striker` | nuclei 模板化检测：按指纹选模板、按回显判真伪 | `nuclei-scan` |
-| **凭据攻坚专家** `credential-breaker` | 在线爆破（含锁号风险控制）与离线破解、字典策略 | `credential-attack` |
-| **隧道工程专家** `tunnel-engineer` | suo5 / chisel / frp / 代理池的选型与落地 | `suo5-tunnel`、`chisel-tunnel`、`frp-tunnel`、`cn-proxy-pool` |
-| **载荷投送专家** `payload-delivery` | 反弹 shell 选型、VPS 中转、加密 WebShell | `shell-handler`、`vps-reverse-shell`、`webshell-toolkit` |
-| **内网横向专家** `intranet-pivot` | fscan / gogo / Impacket，低噪与发包可控 | `fscan-intranet`、`gogo-intranet`、`lateral-movement` |
-| **成人提示词专家** `nsfw-prompt-smith` | 出图给参数头 + 标签栈 + 变体，出文给场景卡 + 节拍表（角色一律成年） | `nsfw-prompt-gen`（收窄为成年） |
-| **大肥鱼**（人设 · 底座） | 不绑定任务：定语气、证据标准与交付形态；后面挂几位专家，就按它们各自的范围接起来 | 为本插件新写 |
+| **环境准备** | 首次使用引导：FOFA_KEY 与 VPS 登录方式、验证通道、降级口径 | `redteam-setup` |
+| **被动信息收集** | 不接触目标，只用公开数据源（证书透明日志等） | `passive-recon` |
+| **主动扫描** | 端口与服务扫描（nmap / masscan），严守授权范围 | `active-scan` |
+| **Web 指纹识别** | 框架、中间件、CMS、组件版本 | `web-fingerprint` |
+| **资产关联** | 域名 ↔ IP ↔ C 段 ↔ 证书 ↔ 服务的图谱化 | `asset-correlation` |
+| **侦察流水线** | subfinder → dnsx → naabu → httpx → katana 一键铺开 | `recon-pipeline` |
+| **FOFA 测绘** | FOFA API 批量测绘；内置限速客户端，避免触发 45012 | `fofa-recon` |
+| **目录爆破** | 后台、备份、配置泄露、源码与版本库（ffuf / feroxbuster / gobuster） | `dir-bruteforce` |
+| **浏览器自动化** | 无依赖 headless 抓 SPA、截图、执行 JS、抓接口清单 | `browser-automation` |
+| **浏览器桥接** | 借 Kimi 扩展驱动真实 Chrome：导航、点击、填表、截图 | `kimi-webbridge` |
+| **nuclei 扫描** | 13,000+ 模板覆盖 CVE / 暴露面 / 配置缺陷 / 默认口令 | `nuclei-scan` |
+| **凭据攻击** | 在线弱口令（hydra）与离线哈希（hashcat / john） | `credential-attack` |
+| **WebShell 工具集** | 冰蝎 / 哥斯拉 / 蚁剑的启动与用法 | `webshell-toolkit` |
+| **反弹 Shell 处理** | VPS 上起 MSF / nc / socat 接收 shell，或从目标拉载荷 | `shell-handler` |
+| **VPS 中转** | 9000-9999 监听、非交互会话驱动、载荷投递、反向隧道 | `vps-reverse-shell` |
+| **suo5 隧道** | 走 WebShell / HTTP 建 SOCKS5，把内网流量代理出来 | `suo5-tunnel` |
+| **chisel 隧道** | HTTP / WebSocket 封装的多路复用隧道，最易穿透出网限制 | `chisel-tunnel` |
+| **frp 隧道** | VPS 上 frps、目标上 frpc，稳定 socks5 与端口映射 | `frp-tunnel` |
+| **国内代理池** | 免费 HTTP / SOCKS5 抓取验活轮换；只用命令级参数，不改本机网络 | `cn-proxy-pool` |
+| **fscan 内网扫描** | 存活、端口、28 类弱口令、未授权、MS17-010、Redis 利用 | `fscan-intranet` |
+| **gogo 内网测绘** | 智能 / 超智能模式、主被动指纹、关键信息提取、发包可控 | `gogo-intranet` |
+| **横向移动** | Impacket（PtH / PsExec / WMI / DCOM / Kerberos / 转储）+ enum4linux | `lateral-movement` |
+| **大肥鱼**（人设 · 底座） | 不绑定任务：定语气、证据标准与交付形态；后面挂几位专家，就按它们各自的范围接起来。**削弱版**——留着判断，不做「无条件照做」的执行器 | 为本插件新写 |
 
-用法：页面上挑一条，点「启用」，它就会按你的模式拼进 system（人设在前，技能按
+用法：页面上点一条启用它，它就会按你的模式拼进 system（人设在前，技能按
 `## 技能：<名字>` 分段）。
 
 **大肥鱼**是**底座人设**（frontmatter 里 `default: true`）：你没选人设时由它顶上，
@@ -90,20 +108,40 @@
 | 用法 | 结果 |
 | --- | --- |
 | 只挂一位专家 | 大肥鱼 + 那一位。底座说清边界，专家补能力 |
-| 九位一起挂 | 大肥鱼先找「交战指挥」当调度者，其余各管一段 |
+| 多位一起挂 | 大肥鱼先看有没有调度类技能，其余各管一段 |
 | 一位也不挂 | 只有大肥鱼，就是通用协作 |
+
+### 「削弱版」是什么意思
+
+被问「你是什么模型 / 什么版本」时，人设要求它回答**「我是大肥鱼削弱版」**。
+
+削弱指的是**边界**，不是能力：
+
+| 满血版（不装本插件的破甲提示词） | 削弱版（本插件的底座人设） |
+| --- | --- |
+| 把「拒绝」当故障，任何请求都得给结果 | 留着判断，做不了就说做不了 |
+| 把违法与伤害行为逐条列成「可用」 | 不列，也不假装它们正常 |
+| 被要求绕开限制时继续执行 | 直接说做不到，并说清是哪一条 |
+
+工具怎么用、命令怎么写、活怎么干，一样给足。
 
 其他内置人设（不带 `default`）**不会**被自动选中——不点名就注入，等于偷偷改你的 system。
 
-提炼原则：不复制原文，按「一条作业线一位专家」重写——每位只留**判据、命令骨干、交接边界、纪律**四块，
-把散在 23 份文件里的同名坑收成一处。
+### 一处必须知道的差异
+
+这些技能原本跑在 dsh-purge 里，正文中有 137 处 `redteam_*` 工具调用
+（`redteam_asset_add`、`redteam_vuln_add`、`redteam_chain_add` 等），那套工具由 dsh-purge
+注册。**magpie 这条链上没有它们**，模型若照着调用会得到「工具不存在」。
+
+按「原样照搬」的要求，正文一字未改，因此这个坑原样保留。要消除它，得把那些调用替换成
+等价动作（比如「在产物里记一条资产」而不是 `redteam_asset_add`）——这件事没做。
 
 ## 它解决什么
 
 `agent-purge` 的 magpie 插件只认 `~/.agent-purge/` 的人设，页面也不能读盘。
 本插件把这条链补成三件事：
 
-1. **内容只从两条路来**：随包分发的 9 位专家 + 1 份底座人设，以及你自己**导入**的文件。
+1. **内容只从两条路来**：随包分发的 22 份技能 + 1 份底座人设，以及你自己**导入**的文件。
    不再去翻磁盘上的任意目录——「它会不会自己扫我的硬盘」不该是个悬念；
 2. **认得四种东西**：DSH 会话导出包（`dsh-session-archive`）、DSH cordis 插件包、
    人设 / 技能 markdown、裸文本与 JSON 清单——坏包给出具体拒绝原因，不半途落盘；
@@ -209,7 +247,7 @@ magpie plugin options magpie-purge '{"useAgentPurge":true}'
 Purge in Magpie/
 ├── package.json           插件清单：magpie.hooks / magpie.page / magpie.options
 ├── hooks.js               网关钩子：清点 + 改写（Bun 侧，能读盘）
-├── skills/                9 位内置专家（随包分发，一位专家一个 .md）
+├── skills/                22 份内置技能（随包分发，一份技能一个 .md）
 ├── personas/              内置底座人设（大肥鱼，不绑定任务）
 ├── lib/
 │   ├── zip.mjs            极简 ZIP 只读解析（store + deflate，拦路径越界）
@@ -325,7 +363,7 @@ node tools/scan.mjs --json
 | --- | --- | --- |
 | 来源 | 只读 `~/.agent-purge/` | 包内专家包 + `state/imports`（只认导入） |
 | 判型 | 只有人设 markdown | 导出包 / DSH 插件包 / 人设 / 技能 / 文本 / 清单 |
-| 注入 | 一个人设 | 人设 + 显式启用的技能（含 9 位内置专家） |
+| 注入 | 一个人设 | 人设 + 显式启用的技能（含 22 份内置技能） |
 | 页面 | 人设选择 + 导入 | 条目列表 + 检查器 + 模式 + 回滚 + 校验记录 |
 | 快照 | 生成脚本写 `personas.js` | 后端每次扫描写 `catalog.js`，页面不读盘 |
 | 版本 | 无 | 同 id 新摘要算新版本，留两版可回滚 |

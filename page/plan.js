@@ -26,6 +26,22 @@
     missingPersona: '',
   })
 
+  /**
+   * applyPrefs 与 lib/plan.mjs 的同名函数同语义：
+   * 把「改过的正文」和「删掉的条目」套回列表。
+   * 页面写不了磁盘，编辑与删除都只能存在 options 里，由网关侧照同一套规则套用。
+   */
+  function applyPrefs(entries = [], options = {}) {
+    const ov = options && typeof options.overrides === 'object' && options.overrides ? options.overrides : {}
+    const rm = options && typeof options.removed === 'object' && options.removed ? options.removed : {}
+    return entries
+      .filter((e) => e && typeof e.id === 'string' && rm[e.id] !== true)
+      .map((e) => {
+        const edited = ov[e.id]
+        return typeof edited === 'string' && edited.trim() ? { ...e, text: edited, edited: true } : e
+      })
+  }
+
   /** resolve 与 lib/plan.mjs 同语义：页面设置优先，人设优先标了 default 的底座人设。 */
   function resolve({ options = {}, entries = [] } = {}) {
     const pageMode = MODES.includes(options.mode) ? options.mode : ''
@@ -98,5 +114,5 @@
     }
   }
 
-  globalThis.PurgePlan = { resolve, MODES }
+  globalThis.PurgePlan = { resolve, applyPrefs, MODES }
 })()

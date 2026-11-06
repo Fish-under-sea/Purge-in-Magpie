@@ -69,3 +69,49 @@ test('页面判定与网关判定逐条一致', () => {
 test('页面判定覆盖同一组模式取值', () => {
   assert.deepEqual([...pagePlan.MODES], ['off', 'strict', 'replace', 'append'])
 })
+
+// ---- 编辑与删除：options.overrides / options.removed ----
+// 页面写不了磁盘，改过的正文和删掉的条目都只存在 options 里。
+// hooks.js 与 page/plan.js 必须套用同一套规则，否则页面答应的事网关不认。
+
+const { applyPrefs: nodePrefs } = await import('../lib/plan.mjs')
+
+test('applyPrefs 两边逐条一致', () => {
+  const cases = [
+    ['没有改过也没删过', {}],
+    ['改了一条', { overrides: { recon: '改过的侦察正文' } }],
+    ['删了一条', { removed: { hunter: true } }],
+    ['改了也删了', { overrides: { recon: '新正文' }, removed: { hunter: true } }],
+    ['覆盖成空白等于没改', { overrides: { recon: '   ' } }],
+    ['removed 里写 false 不算删', { removed: { hunter: false } }],
+    ['删了不存在的 id 不影响别人', { removed: { ghost: true } }],
+  ]
+  for (const [name, options] of cases) {
+    const a = pagePlan.applyPrefs(entries, options)
+    const b = nodePrefs(entries, options)
+    const pick = (list) => list.map((e) => ({ id: e.id, text: e.text, edited: Boolean(e.edited) }))
+    assert.deepEqual(pick(a), pick(b), `用例「${name}」两边结果不同`)
+  }
+})
+
+test('删除的条目不再参与判定，改过的正文会进 plan', () => {
+  const options = {
+    mode: 'replace',
+    enabled: { recon: true, hunter: true },
+    overrides: { recon: '新正文' },
+    removed: { hunter: true },
+  }
+  const page = pagePlan.resolve({ options, entries: pagePlan.applyPrefs(entries, options) })
+  const node = nodeResolve({ options, state: null, entries: nodePrefs(entries, options) })
+  assert.deepEqual(page.skills.map((s) => s.id), node.skills.map((s) => s.id), '两边选中的技能不同')
+  assert.deepEqual(page.skills.map((s) => s.id), ['recon'], '被删除的 hunter 不该出现')
+  assert.equal(page.skills[0].text, '新正文', '技能应该带上改过的正文')
+})
+
+test('删掉当前人设后不会卡在 persona-missing', () => {
+  // 页面删除时会同时把 options.persona 清空，这里验证清空之后确实能回落到默认人设
+  const options = { mode: 'replace', persona: '', removed: { anima: true } }
+  const plan = pagePlan.resolve({ options, entries: pagePlan.applyPrefs(entries, options) })
+  assert.equal(plan.ready, true)
+  assert.equal(plan.personaId, 'base', '应该回落到标了 default 的底座人设')
+})

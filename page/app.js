@@ -48,6 +48,9 @@
   let busy = false
   /** showingText 是「查看原文」的展开态；换条目时要收回去，否则新条目一进来就是展开的。 */
   let showingText = false
+  /** editingText 是原文的编辑态；draftText 是编辑中的草稿，点保存才写回 options。 */
+  let editingText = false
+  let draftText = ''
   /** pendingFile 是「点过选择、还没点导入」的那个文件；两步导入靠它接上。 */
   let pendingFile = null
   /** importKind 是导入时选的类型：auto 交给判定，persona/skill 覆盖它。 */
@@ -94,7 +97,13 @@
     return node
   }
 
-  const entries = () => (Array.isArray(catalog?.entries) ? catalog.entries : [])
+  // entries 出来就已经套过「改过的正文 / 删掉的条目」：
+  // 页面写不了磁盘，编辑与删除只能存 options，由 applyPrefs 统一套用。
+  const entries = () => {
+    const raw = Array.isArray(catalog?.entries) ? catalog.entries : []
+    const api = globalThis.PurgePlan
+    return api?.applyPrefs ? api.applyPrefs(raw, options) : raw
+  }
   const inlineEntries = () => (Array.isArray(options.inline) ? options.inline : [])
 
   /**
@@ -222,27 +231,70 @@
       ))
       for (const e of group.rows) nodes.push(rowOf(e))
     }
+    // 移除是「从候选里拿掉」，不是删文件；入口留在这儿，否则移掉一条就再也找不回来。
+    const removedIds = Object.keys(options.removed || {}).filter((id) => options.removed[id] === true)
+    if (removedIds.length) {
+      nodes.push(el('div', { class: 'restore-row' },
+        el('span', { text: `已移除 ${removedIds.length} 条` }),
+        el('button', {
+          type: 'button',
+          class: 'quiet',
+          onclick: () => save({ removed: {} }, `已恢复 ${removedIds.length} 条被移除的条目`),
+        }, '全部恢复'),
+      ))
+    }
     host.replaceChildren(...nodes)
   }
 
-  /** rowOf 画一行条目；状态只用「未启用 / 已启用 / 拒绝」三种胶囊，不再叠「内置」。 */
+  /**
+   * rowOf 画一行条目。
+   *
+   * 点行本身 = 做它最主要的那件事（技能是开关，人设是设为当前人设）；
+   * 点右侧「查看」= 打开检查器看详情与原文。
+   * 之前点行是「看详情」，开关另有一片芯片墙——同一件事两个入口，还多占一屏。
+   */
   function rowOf(e) {
     const kind = KINDS[e.kind] || { label: e.kind }
+    const on = isEnabled(e.id)
+    const isPersona = e.kind === 'persona'
+    const isCurrent = isPersona && options.persona === e.id
     const badge = e.status === 'rejected'
       ? el('span', { class: 'badge reject', text: '拒绝' })
-      : !e.injectable ? null
-        : isEnabled(e.id) ? null : el('span', { class: 'badge off', text: '未启用' })
-    return el('button', {
-      type: 'button',
-      class: 'row',
-      role: 'option',
+      : !e.injectable
+        ? null
+        : on ? null : el('span', { class: 'badge off', text: isPersona ? '非当前' : '未启用' })
+
+    const openView = () => {
+      // 换条目就收起原文：从一条展开着的详情跳到另一条，不该自动展示别人的正文。
+      if (selected !== e.id) showingText = false
+      selected = selected === e.id ? '' : e.id
+      render()
+    }
+
+    const act = () => {
+      // 素材没有开关可拨，点它就是看详情——总比什么都不发生强。
+      if (!e.injectable) return openView()
+      if (isPersona) {
+        save({ persona: isCurrent ? '' : e.id }, isCurrent ? '已取消当前人设' : `已把「${e.name}」设为当前人设`)
+      } else {
+        save({ enabled: { ...(options.enabled || {}), [e.id]: !on } }, on ? `已停用「${e.name}」` : `已启用「${e.name}」`)
+      }
+    }
+
+    return el('div', {
+      class: `row${on ? ' is-on' : ''}`,
+      role: 'button',
+      tabindex: '0',
+      'aria-pressed': on ? 'true' : 'false',
       'aria-selected': selected === e.id,
-      onclick: () => {
-        const next = selected === e.id ? '' : e.id
-        // 换条目就收起原文：从一条展开着的详情跳到另一条，不该自动展示别人的正文。
-        if (next !== selected) showingText = false
-        selected = next
-        render()
+      title: !e.injectable
+        ? '看详情'
+        : isPersona
+          ? (isCurrent ? '取消当前人设' : '设为当前人设')
+          : (on ? `停用「${e.name}」` : `启用「${e.name}」`),
+      onclick: act,
+      onkeydown: (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); act() }
       },
     },
       el('span', { class: 'spine', style: `--spine:var(--kind-${kindClass(e.kind)})` }),
@@ -250,8 +302,13 @@
         el('span', { class: 'title' }, e.name, badge || null),
         el('span', { class: 'meta', text: `${kind.label} · ${e.builtin ? '随插件' : e.source?.rel ?? ''}` }),
       ),
-      el('span', { class: 'side' }, e.version > 1 ? `v${e.version} ` : '',
-        el('span', { class: 'meta', text: e.injectable ? `${e.chars || 0} 字` : fmtSize(e.size || 0) })),
+      // 右侧只留一个「查看」：字数挪进详情，一行只做一件事。
+      el('button', {
+        type: 'button',
+        class: 'row-view',
+        title: '看详情与原文',
+        onclick: (ev) => { ev.stopPropagation(); openView() },
+      }, '查看'),
     )
   }
 
@@ -307,55 +364,7 @@
         el('span', { text: plan.ready ? `合计 ${total.toLocaleString('zh-CN')} 字符 · 预算 65,536` : `模式 ${plan.mode}` }),
         last?.at ? el('span', { text: last.skipped ? `上次 ${fmtTime(last.at)} · 未注入` : `上次 ${fmtTime(last.at)} · ${last.agent || '—'}` }) : null,
       ),
-      renderExpertPicker(),
     ].filter(Boolean))
-  }
-
-  /**
-   * renderExpertPicker 是「一键启用专家」：这里是每天重复最多的动作。
-   * 不用逐条点开再点启用——专家的开关摊在同一片区域，点一下就切。
-   * 只列技能：人设是「谁来写」，走另一条路（详情里的「设为当前人设」）。
-   */
-  function renderExpertPicker() {
-    const builtin = entries().filter((e) => e.injectable && e.kind === 'skill' && e.builtin)
-    const mine = entries().filter((e) => e.injectable && e.kind === 'skill' && !e.builtin)
-    const all = [...builtin, ...mine]
-    if (!all.length) return null
-
-    const chip = (e) => {
-      const on = isEnabled(e.id)
-      return el('button', {
-        type: 'button',
-        class: `pick${on ? ' is-on' : ''}`,
-        'aria-pressed': on ? 'true' : 'false',
-        title: on ? `停用「${e.name}」` : `启用「${e.name}」`,
-        onclick: () => save({ enabled: { ...(options.enabled || {}), [e.id]: !on } }, on ? `已停用「${e.name}」` : `已启用「${e.name}」`),
-      },
-        el('span', { class: 'pick-mark', 'aria-hidden': 'true' }),
-        el('span', { class: 'pick-name', text: e.name }),
-        el('span', { class: 'pick-size', text: `${e.chars || 0}` }),
-      )
-    }
-
-    const onCount = all.filter((e) => isEnabled(e.id)).length
-    // 分组只在真的有「我的」时才显示：只有内置时还分两栏，等于白占一行。
-    const groups = [
-      mine.length ? { label: '内置', rows: builtin } : null,
-      mine.length ? { label: '我的来源', rows: mine } : null,
-      mine.length ? null : { label: '', rows: all },
-    ].filter(Boolean)
-
-    return el('section', { class: 'picker', 'aria-label': '启用专家' },
-      el('h3', {},
-        el('span', { text: '启用的专家' }),
-        el('span', { class: 'picker-count', text: `${onCount} / ${all.length}` }),
-        el('span', { class: 'h2-sub', text: '点一下即生效' }),
-      ),
-      ...groups.map((g) => el('div', { class: 'pick-group' },
-        g.label ? el('span', { class: 'pick-group-label', text: g.label }) : null,
-        el('div', { class: 'picks' }, ...g.rows.map(chip)),
-      )),
-    )
   }
 
   /** stackRow 是组装里的一层：序号 + 名字 + 一句描述 + 体积。 */
@@ -376,6 +385,7 @@
     if (!e) {
       // 没选中时让位给「组装预览」：右栏不留一片空白，那是最浪费的一屏。
       showingText = false
+      editingText = false
       host.replaceChildren()
       return
     }
@@ -414,8 +424,24 @@
         type: 'button',
         class: showingText ? 'quiet' : '',
         'aria-expanded': showingText ? 'true' : 'false',
-        onclick: () => { showingText = !showingText; renderInspector() },
+        onclick: () => {
+          showingText = !showingText
+          editingText = false
+          renderInspector()
+        },
       }, showingText ? '收起原文' : '查看原文'))
+      // 编辑：页面写不了磁盘，改动存进 options.overrides，由网关侧套用。
+      // 内置技能在包里，原件不动——所以这里必须说清楚「改的是这个插件里的副本」。
+      if (showingText && !editingText) {
+        actions.push(el('button', {
+          type: 'button',
+          onclick: () => {
+            editingText = true
+            draftText = typeof e.text === 'string' ? e.text : ''
+            renderInspector()
+          },
+        }, '编辑'))
+      }
     }
     if (pinned) {
       actions.push(el('button', {
@@ -481,6 +507,32 @@
           if (selected === e.id) selected = ''
         },
       }, '删除副本'))
+    } else if (e.builtin) {
+      // 内置技能在包里，删不掉文件。这里做的是「从这个插件的候选里拿掉」：
+      // 记进 options.removed，列表不再显示、注入也不再带上，可以整批恢复。
+      actions.push(el('button', {
+        type: 'button',
+        class: 'danger',
+        title: '从候选里移除（包里的文件不动，可恢复）',
+        onclick: () => {
+          const enabledNext = { ...(options.enabled || {}) }
+          delete enabledNext[e.id]
+          const pinnedNext = { ...(options.pinned || {}) }
+          delete pinnedNext[e.id]
+          const overridesNext = { ...(options.overrides || {}) }
+          delete overridesNext[e.id]
+          save({
+            removed: { ...(options.removed || {}), [e.id]: true },
+            enabled: enabledNext,
+            pinned: pinnedNext,
+            overrides: overridesNext,
+            persona: options.persona === e.id ? '' : options.persona,
+          }, `已移除「${e.name}」：包里的文件不动，列表底部可恢复`)
+          if (selected === e.id) selected = ''
+          editingText = false
+          render()
+        },
+      }, '删除'))
     }
 
     const versionPicker = history.length
@@ -568,9 +620,63 @@
       pinned ? el('p', { class: 'note', text: `当前固定到 ${short(pinned)}：网关用那一版的正文，不是最新的。` }) : null,
       // 原文按注入形态显示：前面出现的技能段，正文会以「## 技能：<名字>」为界拼进去。
       showingText && canShowText
-        ? el('pre', { class: 'text', text: text.length > 8000 ? `${text.slice(0, 8000)}\n…（共 ${text.length.toLocaleString('zh-CN')} 字符，后面省略）` : text })
+        ? (editingText ? textEditor(e) : el('pre', { class: 'text', text: text.length > 8000 ? `${text.slice(0, 8000)}\n…（共 ${text.length.toLocaleString('zh-CN')} 字符，后面省略）` : text }))
         : null,
     ].filter(Boolean))
+  }
+
+  /**
+   * textEditor 是原文的编辑态。
+   *
+   * 存进 options.overrides[id]，不碰磁盘：内置技能在包里改不动，
+   * state/imports 归后端管。网关侧用 lib/plan.mjs 的 applyPrefs 套用同一份覆盖。
+   */
+  function textEditor(e) {
+    const area = el('textarea', {
+      class: 'text-edit',
+      spellcheck: 'false',
+      rows: '18',
+      oninput: (ev) => { draftText = ev.target.value },
+    })
+    area.value = draftText
+
+    const inlineNow = e.source?.root === 'inline'
+    const saveDraft = () => {
+      const next = area.value
+      if (!next.trim()) { say('正文不能为空：要拿掉这条请用「删除」', 'bad'); return }
+      if (inlineNow) {
+        // 页面导入的条目正文本来就存在 options.inline 里，直接写回它自己
+        const list = inlineEntries().map((x) => (x.id === e.id ? { ...x, text: next } : x))
+        save({ inline: list }, `已保存「${e.name}」的正文`)
+      } else {
+        save({ overrides: { ...(options.overrides || {}), [e.id]: next } }, `已保存「${e.name}」的正文（原件不动）`)
+      }
+      editingText = false
+      render()
+    }
+
+    return el('div', { class: 'text-wrap' },
+      el('div', { class: 'text-bar' },
+        el('span', { class: 'note', text: `${String(area.value || '').length.toLocaleString('zh-CN')} 字符` }),
+        el('button', {
+          type: 'button',
+          class: 'quiet',
+          onclick: () => {
+            // 恢复成原件正文：有覆盖就删掉，没覆盖就重新拉一次快照里的 text
+            if (inlineNow) { say('页面导入的条目没有「原件」可回退：改坏了就重新导入一份', 'bad'); return }
+            const next = { ...(options.overrides || {}) }
+            delete next[e.id]
+            save({ overrides: next }, `已把「${e.name}」恢复成原件正文`)
+            editingText = false
+            render()
+          },
+        }, '还原'),
+        el('button', { type: 'button', onclick: () => { editingText = false; renderInspector() } }, '取消'),
+        el('button', { type: 'button', class: 'primary', onclick: saveDraft }, '保存'),
+      ),
+      area,
+      el('p', { class: 'note', text: '改的是这个插件里的副本：包里的 .md 文件不动，网关注入时用你保存的这份。' }),
+    )
   }
 
   function renderRejects() {

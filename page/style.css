@@ -245,6 +245,9 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   grid-template-columns: minmax(300px, 352px) minmax(0, 1fr);
   gap: 26px;
   align-items: stretch;
+  /* 左列表与右装配框共用同一个上限。两处各自写死过一个值（700 与 520），
+     结果就是并排两块高度不一样、底边参差。 */
+  --split-h: min(70vh, 700px);
 }
 @media (max-width: 900px) { .work { grid-template-columns: minmax(0, 1fr); align-items: start; } }
 
@@ -265,15 +268,26 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 .chip[aria-pressed="true"] { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
 .rail-count { margin: 12px 0 8px; color: var(--muted); font-size: 12px; }
 
-.list { display: grid; gap: 1px; border-top: 1px solid var(--line); }
-/* 桌面端列表自己滚，并且跟着右栏拉长：右栏展开原文后会很高，
-   列表若固定 540px 就留一大片空白。给一个下限，免得条目少时它缩成一条。
+/* max-content：行高必须由内容决定。
+   默认的 auto 在「容器有确定高度」时会被压到分给它的空间（实测 30px 装 49px 内容），
+   名字和副标题就叠在一起了。 */
+.list {
+  display: grid;
+  grid-auto-rows: max-content;
+  gap: 1px;
+  border-top: 1px solid var(--line);
+}
+/* 桌面端列表自己滚，高度跟着右栏走，但封顶。
+   只给下限不给上限：23 份技能会把它拉到比右栏还长，整页都被拽下去。
+   下限保证条目少时不缩成一条；上限保证条目不封顶。
    窄屏不做嵌套滚动——那比页面滚动难用。
    底部加一层淡出：滚动区硬切会把最后一行切成半截，看起来像坏了。 */
 @media (min-width: 901px) {
   .list {
-    flex: 1 1 auto;
-    min-height: min(58vh, 540px);
+    /* 固定高度而不是 max-height：两块并排，长度要一样；只给上限的话，
+       内容少的那块会缩回去，一眼就看出参差。 */
+    flex: 0 0 auto;
+    height: var(--split-h);
     overflow-y: auto;
     overscroll-behavior: contain;
     padding-bottom: 4px;
@@ -294,6 +308,8 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 .group-head:first-child { padding-top: 8px; }
 .group-head .n { font-variant-numeric: tabular-nums; }
 
+/* 一行就是一张卡：点行本身做它最主要的事，右侧「查看」进详情。
+   行是 div 而不是 button——里面还嵌着一个「查看」按钮，button 套 button 不合法。 */
 .row {
   display: grid;
   grid-template-columns: 3px minmax(0, 1fr) auto;
@@ -306,11 +322,36 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   border-bottom: 1px solid var(--line);
   border-radius: 0;
   background: transparent;
+  cursor: pointer;
+  transition: background-color .12s ease;
 }
 .row:hover { background: color-mix(in oklab, var(--card) 78%, transparent); }
+.row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .row[aria-selected="true"] { background: var(--accent-soft); }
+/* 未启用的行把文字压暗，一眼看出「这条没在干活」；启用的保持正常对比度。 */
+.row:not(.is-on) .title { color: var(--muted); font-weight: 460; }
 .row > span { min-width: 0; }
 .row .spine { align-self: stretch; border-radius: 2px; background: var(--spine, var(--line)); }
+.row:not(.is-on) .spine { opacity: .35; }
+
+/* 右侧「查看」：行里唯一的按钮，样式压到最轻，不抢行的点击区 */
+.row-view {
+  font-size: 12px;
+  padding: 2px 10px;
+  min-height: 24px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  white-space: nowrap;
+  transition: border-color .12s ease, color .12s ease, background-color .12s ease;
+}
+.row:hover .row-view { border-color: var(--line); }
+.row-view:hover { color: var(--ink); border-color: color-mix(in oklab, var(--muted) 60%, var(--line)); }
+.row[aria-selected="true"] .row-view {
+  color: var(--accent);
+  border-color: color-mix(in oklab, var(--accent) 45%, var(--line));
+}
 .row .title {
   display: block;
   font-weight: 520;
@@ -363,7 +404,28 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 .panel .h2-sub { color: var(--muted); font-size: 12px; font-weight: 400; }
 
 /* 组装预览：把「会拼成什么」摊开成按顺序的积木，这是本页最有辨识度的一块 */
-.stack-view { display: grid; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+.stack-view {
+  display: grid;
+  /* 与列表同一个坑：容器一旦有确定高度，auto 行会被压缩到分给它的空间，
+     名字和描述就叠在一起。行高必须由内容决定。 */
+  grid-auto-rows: max-content;
+  align-content: start;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+/* 桌面端给自己一个上限：挂满 22 份技能时这一栏能到两千多像素，
+   整页被它拽长，下面的「启用的专家」要滚好几屏才看得到。超出就在框内滚。 */
+@media (min-width: 901px) {
+  .stack-view {
+    /* 与左列表同一个高度：两块并排时长度一致 */
+    height: var(--split-h);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* 底部淡出：硬切会把最后一行切成半截，看着像坏了 */
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+  }
+}
 .stack-row {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr) max-content;
@@ -593,6 +655,52 @@ pre.text {
   border-radius: 10px;
   white-space: pre-wrap;
 }
+
+/* 原文的编辑态：一条工具栏 + 一块等宽输入区，尺寸与只读态一致，
+   进出编辑不该让版面跳一下。 */
+.text-wrap { margin-top: 14px; }
+.text-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.text-bar .note { margin-right: auto; }
+.text-bar button {
+  font-size: 12.5px;
+  min-height: 28px;
+  padding: 3px 12px;
+}
+textarea.text-edit {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 280px;
+  max-height: 52vh;
+  padding: 12px 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  resize: vertical;
+}
+textarea.text-edit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* 已移除条目的恢复入口：贴在列表底部，删错了能从这儿回来 */
+.restore-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 2px 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.restore-row button { margin-left: auto; font-size: 12px; min-height: 26px; padding: 2px 10px; }
 
 .empty {
   color: var(--muted);

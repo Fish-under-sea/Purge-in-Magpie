@@ -14,7 +14,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { compose, rewrite, supported } from './lib/rewrite.mjs'
 import { readState } from './lib/agentpurge.mjs'
-import { resolve as resolvePlan } from './lib/plan.mjs'
+import { applyPrefs, resolve as resolvePlan } from './lib/plan.mjs'
 import { loadCatalog, ownOptions, paths, sync } from './lib/state.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -40,7 +40,12 @@ export function inlineEntries(options = {}) {
 
 /** pick 选出这一次要注入的文本：人设一条，显式启用的技能若干。 */
 export function pick(catalog, options = {}, state = null, agent = '') {
-  const entries = [...(Array.isArray(catalog?.entries) ? catalog.entries : []), ...inlineEntries(options)]
+  // applyPrefs 先套「用户改过/删过」的结果：页面上编辑过的正文与删掉的条目
+  // 都存在 options 里（页面写不了磁盘），这里必须与 page/plan.js 用同一套规则。
+  const entries = applyPrefs(
+    [...(Array.isArray(catalog?.entries) ? catalog.entries : []), ...inlineEntries(options)],
+    options,
+  )
   const usable = entries.filter((e) => e.status === 'ok' && e.injectable && typeof e.text === 'string' && e.text.trim())
   const pinned = options.pinned && typeof options.pinned === 'object' ? options.pinned : {}
 
