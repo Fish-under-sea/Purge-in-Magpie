@@ -125,6 +125,13 @@ node tools/scan.mjs --json
 | 快照 | 生成脚本写 `personas.js` | 后端每次扫描写 `catalog.js`，页面不读盘 |
 | 版本 | 无 | 同 id 新摘要算新版本，留两版可回滚 |
 
+## 版本
+
+| 版本 | 要点 |
+| --- | --- |
+| `0.1.1` | 修掉「没流量时插件页是空的」：钩子模块加载时先从 `plugins.json` 读回自己的 options 再预热扫描 |
+| `0.1.0` | 首个版本 |
+
 ## 许可
 
 MIT。上游 agent-purge 的 MIT 文本与版权行原样保留在 [`LICENSE`](LICENSE) 与
