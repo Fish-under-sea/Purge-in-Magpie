@@ -1,9 +1,16 @@
-# Purge in Magpie
+# magpie-purge
 
 把**本地 purge 目录**当成 magpie 的「自由插件与技能源」：清点、校验、分类、去重、回滚，
 再按模式把选中的人设与技能写进经过 magpie 网关的 agent 请求。
 
 它是 magpie 的**页面插件 + 网关钩子**单包，不是 FISH Dock 插件，不依赖任何宿主补丁。
+
+| | |
+| --- | --- |
+| npm | [`@fish-under-sea/magpie-purge`](https://www.npmjs.com/package/@fish-under-sea/magpie-purge) |
+| 仓库 | <https://github.com/Fish-under-sea/magpie-purge> |
+| 侧栏名字 | 破甲 · Purge（`magpie.page.titles`） |
+| 许可 | MIT |
 
 ## 致谢
 
@@ -59,7 +66,8 @@
 magpie plugin add @fish-under-sea/magpie-purge
 
 # 或从本仓目录
-magpie plugin add "/path/to/Purge in Magpie"
+git clone https://github.com/Fish-under-sea/magpie-purge
+magpie plugin add "./magpie-purge"
 magpie plugin list
 ```
 
@@ -148,12 +156,27 @@ Purge in Magpie/
 │   ├── bundled.mjs        读包内 skills/ 与 personas/，标 builtin
 │   └── state.mjs          快照落盘（state/catalog.json + page/catalog.js）
 ├── page/                  插件页：index.html / app.js / style.css / icon.*
+│   ├── icon.svg           侧栏与页面标签的图标（空心盾牌）
+│   └── card.png           插件卡片的图（由 tools/card-icon.mjs 内联进 package.json）
 ├── preview/               本地预览：mock 宿主 + 演示快照 + 单文件 purge-preview.html
 ├── tools/
 │   ├── scan.mjs           离线清点（预览与真机同一条路径）
-│   └── build-preview.mjs  把整页压成单文件 HTML（双击就能看）
+│   ├── build-preview.mjs  把整页压成单文件 HTML（双击就能看）
+│   └── card-icon.mjs      把 page/card.png 内联进 magpie.icon（data URI）
 └── tests/                 node --test：判型、校验、改写、选人、快照、内置包
 ```
+
+## 两个图标，别混
+
+magpie 的两个 icon 键管的是不同地方，改错一个就会影响另一个：
+
+| 键 | 显示在哪 | 值 |
+| --- | --- | --- |
+| `magpie.icon` | 插件**卡片** | **必须是 `https://` 或 `data:image/`**——magpie 的 `iconOf()` 会直接丢掉相对路径 |
+| `magpie.page.icon` | **侧栏**标签与页面 tab | 可以是包内相对路径 |
+
+所以卡片图走 `tools/card-icon.mjs` 内联成 data URI（约 41 KiB），侧栏仍是 `page/icon.svg` 的空心盾牌。
+换了卡片图就重跑一次脚本；`npm run prepack` 会顺带校验。
 
 ## 预览整个界面
 
