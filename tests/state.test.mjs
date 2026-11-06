@@ -16,7 +16,7 @@ function workspace() {
 }
 after(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }) })
 
-test('sync 写出条目表与页面快照，快照里没有正文', () => {
+test('sync 写出条目表与页面快照，可注入条目的正文随快照下来', () => {
   const here = workspace()
   const src = join(here, 'src')
   mkdirSync(src)
@@ -26,12 +26,12 @@ test('sync 写出条目表与页面快照，快照里没有正文', () => {
   assert.equal(catalog.entries.length, 1)
   assert.equal(catalog.entries[0].text, '正文在这里')
   assert.equal(snapshot.entries.length, 1)
-  assert.equal(snapshot.entries[0].text, undefined, '快照不能带正文')
+  // 页面要能「查看原文」：可注入条目的正文必须跟着快照走，否则按钮点开是空的。
+  assert.equal(snapshot.entries[0].text, '正文在这里', '可注入条目要带正文')
   assert.equal(snapshot.options.mode, 'append')
 
   const onDisk = readFileSync(join(here, 'page', 'catalog.js'), 'utf8')
   assert.match(onDisk, /^window\.PURGE_CATALOG = /)
-  assert.ok(!onDisk.includes('正文在这里'), '页面快照里不该出现人设正文')
   assert.equal(loadCatalog({ catalogFile: join(here, 'state', 'catalog.json') }).entries.length, 1)
 })
 
