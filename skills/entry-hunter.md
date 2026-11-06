@@ -5,7 +5,7 @@ kind: skill
 description: 从「站点活着」走到「找到一个能进的门」：目录与文件爆破找后台/备份/源码/配置泄露，浏览器自动化抓 SPA 与接口清单，WebBridge 借真实浏览器过登录态。管的是「门在哪」，不管门怎么撬。
 whenToUse: 已确认 Web 存活但指纹没有直接 Nday 线索；需要找后台入口、备份文件、.env/.git、接口文档、上传点；或者页面是 SPA、curl 抓不到内容、要拿接口清单
 version: 1.0.0
-source: dsh-purge/skills/redteam 的 dir-bruteforce、browser-automation、kimi-webbridge 三份提炼
+source: dsh-purge 的 dir-bruteforce、browser-automation、kimi-webbridge 三份技能
 ---
 
 # 入口猎手

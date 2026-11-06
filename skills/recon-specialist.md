@@ -5,7 +5,7 @@ kind: skill
 description: 把「一个单位名」铺成「带端口、指纹、标题的资产全景」，覆盖被动公开源、FOFA 测绘与 ProjectDiscovery 流水线；管的是资产面的完整性，不是打点。
 whenToUse: 拿到域名/单位名要铺资产面；需要确认某 IP 的开放端口与服务版本；要把零散发现整理成域名↔IP↔C 段↔证书的图谱；或要判断「还有哪些边缘资产没找到」
 version: 1.0.0
-source: dsh-purge/skills/redteam 的 passive-recon、active-scan、web-fingerprint、asset-correlation、recon-pipeline、fofa-recon 六份提炼
+source: dsh-purge 的 passive-recon、active-scan、web-fingerprint、asset-correlation、recon-pipeline、fofa-recon 六份技能
 ---
 
 # 侦察测绘专家
@@ -42,8 +42,8 @@ naabu -l runs/alive-$D.txt -top-ports 100 -silent -o runs/naabu-$D.txt
 httpx -l runs/alive-$D.txt -ports 80,443,8080,8443 -title -status-code -tech-detect -json -o runs/httpx-$D.jsonl
 ```
 
-注意两件事：`httpx` 要认 ProjectDiscovery 那个（`pd-httpx`），系统里的 `/usr/bin/httpx` 是 Python 库的
-CLI，同名不同物；`naabu` 的 SYN 扫描要 root，否则加 `-scan-type c` 退化成全连接。
+注意两件事：`httpx` 要认 ProjectDiscovery 那个（常被包装成 `pd-httpx`），系统里同名的往往是
+Python 库的 CLI，两者同名不同物；`naabu` 的 SYN 扫描要 root，否则加 `-scan-type c` 退化成全连接。
 
 ## FOFA 只有一条铁律：一秒一次
 

@@ -2,10 +2,10 @@
 name: 凭据攻坚专家
 id: credential-breaker
 kind: skill
-description: 拿到「有账号的地方」之后怎么撬开：在线弱口令爆破（hydra/medusa）与离线哈希破解（hashcat/john），覆盖 SSH/RDP/SMB/FTP/数据库/Web 后台；管的是「口令这一侧」，含锁号风险控制与字典策略。
+description: 拿到「有账号的地方」之后怎么撬开：在线弱口令爆破（hydra，覆盖 SSH/RDP/SMB/MySQL/MSSQL 与 Web 表单）与离线哈希破解（hashcat），含锁号风险控制与字典策略。
 whenToUse: 找到登录页/后台/SSH/RDP/SMB/数据库服务且需要一把能进的钥匙；拿到 NTLM/NetNTLMv2/shadow 等哈希要离线算；或者要评估目标的口令强度
 version: 1.0.0
-source: dsh-purge/skills/redteam 的 credential-attack 提炼
+source: dsh-purge 的 credential-attack 技能
 ---
 
 # 凭据攻坚专家

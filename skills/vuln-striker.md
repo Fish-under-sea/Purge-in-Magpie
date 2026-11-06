@@ -2,10 +2,10 @@
 name: 漏洞打击专家
 id: vuln-striker
 kind: skill
-description: 已知漏洞这一侧的打击手：nuclei 模板化检测（13,000+ 模板，CVE/暴露面/默认口令/配置缺陷），按指纹选模板、按严重度限流、按回显判真伪；同时守 DoS 红线。管「有现成模板的洞」，不管零日。
+description: 已知漏洞这一侧的打击手：nuclei 模板化检测，按指纹选模板、按严重度限流、按回显判真伪；同时守 DoS 红线。管「有现成模板的洞」，不管零日。
 whenToUse: 拿到存活资产清单要做 Nday/1day 批量检测；已知组件与版本想知道有没有现成模板；刚扫完指纹要确认某条 CVE 是否命中
 version: 1.0.0
-source: dsh-purge/skills/redteam 的 nuclei-scan 提炼
+source: dsh-purge 的 nuclei-scan 技能
 ---
 
 # 漏洞打击专家
@@ -16,9 +16,9 @@ source: dsh-purge/skills/redteam 的 nuclei-scan 提炼
 ## 一条铁律：先查库，再开火
 
 动手前先看本机已有的 POC / 模板：
-- 模板库就在本地（13,000+），**不要上网重新找 POC**；
-- 已知组件+版本时，直接 `-t http/cves/<年>/CVE-xxxx-xxxx.yaml` 精确打击；
-- 只有本地没有，才去搜；搜到的验证有效再回填知识库，别让下一个人重做一遍。
+- **先查本机**：装了模板库就按它精确打（`-t http/cves/<年>/CVE-xxxx-xxxx.yaml`），
+  装了 POC 知识库就先搜一遍，**不要一上来就上网找**；
+- 本机确实没有，才去搜；搜到的验证有效再回填，别让下一个人重做一遍。
 
 ## 四档打法，按手里的信息选
 
@@ -49,7 +49,8 @@ nuclei -l runs/alive-urls.txt -tags cve -tl
 
 ## DoS 红线：那条 ignore 不能动
 
-本机 `~/.config/nuclei/.nuclei-ignore` 默认忽略 `dos`、`local`、`fuzz`、`bruteforce`、`txt-service`。
+nuclei 的 ignore 文件（`~/.config/nuclei/.nuclei-ignore` 或安装目录下同名文件）默认忽略
+`dos`、`local`、`fuzz`、`bruteforce`、`txt-service`。
 **不要为了「打得更全」去掉**——DoS 类模板会打死生产系统，演练里这是直接出局的行为。
 同理，定时任务类、重建索引类的模板，先在测试资产上验证再上生产。
 

@@ -5,7 +5,7 @@ kind: skill
 description: 把「打不到」变成「打得到」：suo5 走 WebShell 出 SOCKS5、chisel 走 HTTP/WebSocket 过出网限制、frp 建长期稳定通道、免费代理池做命令级换出口。选型、落地、验证、拆除，含「绝不动本机网络配置」铁律。
 whenToUse: 目标是内网段/只有 127.0.0.1 可达；需要把流量从目标带出来；直连被出网策略挡；或者某个工具只支持 socks5/http 代理
 version: 1.0.0
-source: dsh-purge/skills/redteam 的 suo5-tunnel、chisel-tunnel、frp-tunnel、cn-proxy-pool 四份提炼
+source: dsh-purge 的 suo5-tunnel、chisel-tunnel、frp-tunnel、cn-proxy-pool 四份技能
 ---
 
 # 隧道工程专家

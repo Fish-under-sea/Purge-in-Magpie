@@ -20,6 +20,8 @@
   }
   /** 三类语义色：人设 / 技能 / 素材。六种类型各给一色会变成彩虹，信息量却没增加。 */
   const kindClass = (kind) => KINDS[kind]?.cls || 'material'
+  /** builtinFolder 从内置条目的 root 里取出它所在的目录名（skills / personas）。 */
+  const builtinFolder = (e) => String(e.source?.root || '').split(/[\\/]/).filter(Boolean).pop() || 'skills'
   const MODE_HELP = {
     off: '请求原样放行，什么也不改。',
     strict: '整段可控 system 换成人设；原 system 里的工具说明文本也会一起没了。',
@@ -379,12 +381,16 @@
         el('h2', {}, e.name, el('span', { class: `kind ${kindCls}` }, kind.label)),
         el('p', { class: 'sub-note', text: e.meta?.description || (e.injectable ? '可写进 system 段的人设/技能文本。' : NOT_INJECTABLE) }),
       ),
-      // 内置专家：说清它是随包来的，不是用户导入的，所以没有「删除」只有「停用」
-      e.builtin
-        ? el('p', { class: 'sub-note', text: `随插件分发，${e.meta?.whenToUse ? `何时用：${e.meta.whenToUse}` : '不需要导入，启用即可。'}${e.meta?.source ? `（提炼自 ${e.meta.source}）` : ''}` })
+      // 内置专家：说清它是随包来的，不是用户导入的，所以没有「删除」只有「停用」。
+      // 「何时用」与「提炼自」分两行：一行里塞两件事读起来像免责声明。
+      e.builtin && e.meta?.whenToUse
+        ? el('p', { class: 'sub-note', text: `何时用：${e.meta.whenToUse}` })
+        : null,
+      e.builtin && e.meta?.source
+        ? el('p', { class: 'sub-note', text: `提炼自 ${e.meta.source}` })
         : null,
       el('dl', { class: 'facts' },
-        el('dt', { text: '来源' }), el('dd', { text: e.source?.root === 'inline' ? '页面导入（存在 options 里）' : e.builtin ? '插件内置 skills/' : e.source?.root || '—' }),
+        el('dt', { text: '来源' }), el('dd', { text: e.source?.root === 'inline' ? '页面导入（存在 options 里）' : e.builtin ? `插件内置 ${builtinFolder(e)}/` : e.source?.root || '—' }),
         el('dt', { text: '路径' }), el('dd', {}, el('code', { text: e.source?.rel || '—' })),
         el('dt', { text: '大小' }), el('dd', { text: e.injectable ? `${e.chars || 0} 字符（上限 64 KB）` : fmtSize(e.size || 0) }),
         el('dt', { text: '摘要' }), el('dd', {}, el('code', { text: short(e.digest) })),

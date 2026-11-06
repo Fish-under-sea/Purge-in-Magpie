@@ -148,23 +148,48 @@ Purge in Magpie/
 │   ├── bundled.mjs        读包内 skills/ 与 personas/，标 builtin
 │   └── state.mjs          快照落盘（state/catalog.json + page/catalog.js）
 ├── page/                  插件页：index.html / app.js / style.css / icon.*
-├── preview/               本地预览：mock 宿主 + 演示快照（只给人看界面）
-├── tools/scan.mjs         离线清点（预览与真机同一条路径）
+├── preview/               本地预览：mock 宿主 + 演示快照 + 单文件 purge-preview.html
+├── tools/
+│   ├── scan.mjs           离线清点（预览与真机同一条路径）
+│   └── build-preview.mjs  把整页压成单文件 HTML（双击就能看）
 └── tests/                 node --test：判型、校验、改写、选人、快照、内置包
 ```
 
-## 本地预览
+## 预览整个界面
+
+两种，看你要给谁看。
+
+**① 单文件，双击就开**（给人看界面时用这个）：
+
+```bash
+node tools/build-preview.mjs      # → preview/purge-preview.html
+```
+
+生成物是**一个 HTML 文件**，CSS、JS、mock 桥、演示快照全部内联，没有任何外部依赖——
+双击直接打开，不用起服务、不用开端口。顶部有主题与状态两个开关：
+
+| 参数 | 作用 |
+| --- | --- |
+| `#theme=dark` / `#theme=light` | 深色 / 浅色 |
+| `#snap=ready` / `#snap=blocked` | 就绪那一屏 / 什么都没就绪那一屏 |
+| `#row=0` | 直接打开第几条的详情（0 起） |
+
+例：`preview/purge-preview.html#theme=light&snap=blocked`
+
+**② 起服务，看真实文件**（改完 `page/` 后自查用这个）：
 
 ```bash
 node preview/serve.mjs --demo     # http://127.0.0.1:55133
 ```
 
-预览用 mock 宿主把真实的 `page/index.html` 放进一个帧里，主题跟随 magpie 的变量名：
+用 mock 宿主把真实的 `page/index.html` 放进一个帧里，主题跟随 magpie 的变量名：
 `?theme=dark`（默认）/ `?theme=light`。
-
 默认**不预选任何条目**——右栏默认显示「注入组装」，那是最该看的一屏；
 要检查详情用 `?row=0` 指定第几条（0 起）。
 不带 `--demo` 时读的是真机生成的 `page/catalog.js`；`--demo=blocked` 是「什么都没就绪」那一屏。
+
+单文件是**派生文件**：改完 `page/` 要重新跑一次 `build-preview`，别手改它。
+`npm run prepack` 会顺手重建，所以发布包里那份总是最新的。
 
 ## 页面怎么排的
 

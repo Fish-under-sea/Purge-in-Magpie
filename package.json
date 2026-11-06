@@ -1,6 +1,6 @@
 {
   "name": "@fish-under-sea/magpie-purge",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Purge in Magpie: a magpie page plugin that treats a local purge folder as a free plugin/skill source, inspects and validates what is in it, and rewrites the gateway's system prompt by mode (off / strict / replace / append).",
   "type": "module",
   "license": "MIT",
@@ -39,8 +39,9 @@
   "scripts": {
     "scan": "node tools/scan.mjs",
     "test": "node --test --test-isolation=none \"tests/*.test.mjs\"",
-    "preview": "node preview/serve.mjs --demo",
-    "prepack": "node tools/prepack.mjs"
+    "preview": "node tools/build-preview.mjs",
+    "preview:serve": "node preview/serve.mjs --demo",
+    "prepack": "node tools/prepack.mjs && node tools/build-preview.mjs"
   },
   "magpie": {
     "hooks": "./hooks.js",

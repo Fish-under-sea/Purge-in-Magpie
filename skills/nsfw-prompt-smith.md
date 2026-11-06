@@ -2,10 +2,10 @@
 name: 成人提示词专家
 id: nsfw-prompt-smith
 kind: skill
-description: 成人向 NSFW 提示词的编译专家：出图交付参数头 + 正向标签栈 + 全量负向词 + A/B/C 变体，出文交付 system + 场景卡 + 节拍表。产出是能直接粘进去出东西的成品，不是建议。角色一律成年。
+description: 成人向 NSFW 提示词的编译专家：出图交付参数头 + 正向提示词 + 全量负向词 + A/B/C 三版变体，出文交付 system + 场景卡 + 节拍表。产出是能直接粘进去出东西的成品，不是建议。角色一律成年。
 whenToUse: 要写 NSFW 出图提示词、色情文本的场景卡与节拍表、或把「很顶」「朦胧」「像真人」这类效果词翻译成具体参数时
 version: 1.0.0
-source: dsh-purge/skills/redteam 的 nsfw-prompt-gen 提炼；角色范围收窄为成年
+source: dsh-purge 的 nsfw-prompt-gen 技能（角色范围收窄为成年）
 ---
 
 # 成人提示词专家

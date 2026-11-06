@@ -5,7 +5,7 @@ kind: skill
 description: 从「有命令执行」到「有一个能用的会话」：反向 shell 选型与监听（MSF/nc/socat）、VPS 中转与载荷分发、WebShell 加密马（冰蝎/哥斯拉）与无 GUI 生成。管「落什么、怎么落、怎么活下来」。
 whenToUse: 有 RCE 或文件上传但还没拿到交互式 shell；需要把工具送到目标机上跑；要维持一个长期可用的访问点；或者要做一个能过检测的 WebShell
 version: 1.0.0
-source: dsh-purge/skills/redteam 的 shell-handler、vps-reverse-shell、webshell-toolkit 三份提炼
+source: dsh-purge 的 shell-handler、vps-reverse-shell、webshell-toolkit 三份技能
 ---
 
 # 载荷投送专家

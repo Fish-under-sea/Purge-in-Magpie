@@ -2,10 +2,10 @@
 name: 交战指挥
 id: engagement-lead
 kind: skill
-description: 全局调度与开工前置：一次把资源要齐（测绘 key、可控主机、工具链），验证通道真的通，给降级口径；按阶段调八位专家，没有的把关不硬凑。管的是「整场怎么打」，不亲自打。
+description: 全局调度与开工前置：一次把资源要齐（测绘平台的 API key、一台可控公网主机、工具链），验证通道真的通，给降级口径；按阶段调八位专家，没有的把关不硬凑。管的是「整场怎么打」，不亲自打。
 whenToUse: 刚开始一场任务；环境没配好、缺 key 缺主机；需要有人决定「先做哪条、做到哪算够」；或者要判断这次能不能开工
 version: 1.0.0
-source: dsh-purge/skills/redteam 的 redteam-setup 提炼，并重写为「调度者」视角
+source: dsh-purge 的 redteam-setup 技能，重写为「调度者」视角
 ---
 
 # 交战指挥

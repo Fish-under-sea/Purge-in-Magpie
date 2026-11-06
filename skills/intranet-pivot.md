@@ -5,7 +5,7 @@ kind: skill
 description: 进了内网之后怎么走：fscan 综合扫描与弱口令/漏洞、gogo 高性能测绘与指纹、Impacket 套件的 PtH/PsExec/WMI/Kerberos 与凭据转储。管「从一台机器到一个域」，含低噪与发包可控。
 whenToUse: 已有一个内网落脚点（跳板/会话/隧道）要看内网有什么；需要在域内用凭据横向；要枚举共享、用户、组、信任关系
 version: 1.0.0
-source: dsh-purge/skills/redteam 的 fscan-intranet、gogo-intranet、lateral-movement 三份提炼
+source: dsh-purge 的 fscan-intranet、gogo-intranet、lateral-movement 三份技能
 ---
 
 # 内网横向专家
