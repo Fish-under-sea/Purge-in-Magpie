@@ -157,6 +157,9 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 .badge.reject { color: var(--danger); }
 .badge.dup { color: var(--kind-manifest); }
 .badge.off { color: var(--muted); }
+/* 内置：随包分发的专家，用「已装」的语义色，别和「未启用」混成一个灰 */
+.badge.builtin { color: var(--kind-plugin); margin-left: 6px; }
+.row.is-builtin .title { font-weight: 600; }
 
 /* ---------- 检查器 ---------- */
 .inspect { min-width: 0; min-height: 240px; }

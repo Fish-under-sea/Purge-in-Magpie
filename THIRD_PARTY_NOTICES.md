@@ -32,12 +32,24 @@
   异步网关钩子的 `onRequest(body, ctx)` 形状与 `ctx.report` 码。
 - 本插件不修改 magpie 源码，只按它的公开扩展点接入。
 
-## 3. dsh-session-archive（识别样本）
+## 3. dsh-purge 红队技能库（内置专家的来源）
+
+- 位置：本机 `D:\Fish-code\DSH\plugins\dsh-purge\skills\redteam\`（23 份原子技能，共约 143 KB）
+- 用途：`skills/` 下 9 位内置专家由它们**提炼**而来，不是原样复制；每份 SKILL.md 的 `source:`
+  字段写明对应原文件
+- 提炼方式：按「一条作业线一位专家」重写，只保留判据、命令骨干、交接边界、纪律四块；
+  原文里的工具绝对路径、环境变量占位符在提炼时被泛化为通用写法
+- 未做的事：不修改 `dsh-purge` 里的任何文件；本插件也不加载它的运行时代码
+
+`DSH\purge` 会话导出包里那份 Prompt Forge 人设，内化为 `personas/prompt-forge.md`，
+角色范围收窄为成年（原文没有这项限定）。
+
+## 4. dsh-session-archive（识别样本）
 
 - 本地样本：`@local/session-archive`（DSH cordis 插件），用于「DSH 插件包」判型夹具；
 - 它只作为**被判型的对象**出现，本插件不加载、不执行导入件里的任何代码。
 
-## 4. 许可与再分发
+## 5. 许可与再分发
 
 本插件整体按 MIT 发布。上游 MIT 文本已原样附在 [`LICENSE`](LICENSE) 里；
 分发本插件时请一并保留该文件，别把上游的版权行删掉。

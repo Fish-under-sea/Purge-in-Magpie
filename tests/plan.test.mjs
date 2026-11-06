@@ -80,3 +80,23 @@ test('auto：没指定人设时取第一条人设', () => {
   assert.equal(plan.personaId, 'anima')
   assert.equal(plan.personaFrom, 'auto')
 })
+
+test('内置人设不参与 auto：用户没选就不会被悄悄接管', () => {
+  const withBuiltin = [
+    { id: 'prompt-forge', name: 'Prompt Forge', kind: 'persona', text: '工具人设', builtin: true },
+    { id: 'anima', name: 'Anima', kind: 'persona', text: '人设正文' },
+  ]
+  const plan = resolve({ options: { mode: 'append' }, state: null, entries: withBuiltin })
+  assert.equal(plan.personaId, 'anima', '应跳过内置，选用户自己的')
+
+  const onlyBuiltin = resolve({ options: { mode: 'append' }, state: null, entries: [withBuiltin[0]] })
+  assert.equal(onlyBuiltin.ready, false, '只有内置人设时不该自动注入')
+})
+
+test('显式指定内置人设时照用（用户点了就听用户的）', () => {
+  const withBuiltin = [{ id: 'prompt-forge', name: 'Prompt Forge', kind: 'persona', text: '工具人设', builtin: true }]
+  const plan = resolve({ options: { mode: 'append', persona: 'prompt-forge' }, state: null, entries: withBuiltin })
+  assert.equal(plan.ready, true)
+  assert.equal(plan.personaId, 'prompt-forge')
+  assert.equal(plan.personaFrom, 'page')
+})

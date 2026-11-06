@@ -159,16 +159,18 @@
         ? el('span', { class: 'badge reject', text: '拒绝' })
         : !e.injectable ? null
           : isEnabled(e.id) ? null : el('span', { class: 'badge off', text: '未启用' })
+      // 内置条目随包走：给个短标，让人一眼看出「这条不用我导入」
+      const builtin = e.builtin ? el('span', { class: 'badge builtin', text: '内置' }) : null
       return el('button', {
         type: 'button',
-        class: 'row',
+        class: `row${e.builtin ? ' is-builtin' : ''}`,
         role: 'option',
         'aria-selected': selected === e.id,
         onclick: () => { selected = e.id; render() },
       },
         el('span', { class: 'spine', style: `--spine:${kind.color}` }),
         el('span', {},
-          el('span', { class: 'title', text: e.name }),
+          el('span', { class: 'title' }, e.name, builtin),
           el('span', { class: 'meta', text: `${kind.label} · ${e.source?.rel ?? ''}` }),
         ),
         el('span', { class: 'side' }, e.version > 1 ? `v${e.version}` : '', badge || '',
@@ -194,12 +196,15 @@
     const text = inline ? String(e.text || '') : ''
 
     const actions = []
-    if (e.injectable) {
+    // 人设才有「设为当前人设」；技能是「启用/停用」。混着写会让人以为技能能当人设用。
+    if (e.injectable && e.kind === 'persona') {
       actions.push(el('button', {
         type: 'button',
         class: options.persona === e.id ? 'primary' : '',
         onclick: () => save({ persona: e.id }, `已把「${e.name}」设为当前人设`),
       }, options.persona === e.id ? '当前人设' : '设为当前人设'))
+    }
+    if (e.injectable) {
       actions.push(el('button', {
         type: 'button',
         onclick: () => save({ enabled: { ...(options.enabled || {}), [e.id]: !enabled } }, enabled ? `已停用「${e.name}」` : `已启用「${e.name}」`),
@@ -258,18 +263,22 @@
     host.replaceChildren(...[
       el('div', { class: 'head' },
         el('div', {},
-          el('h2', { text: e.name }),
+          el('h2', {} , e.name, e.builtin ? el('span', { class: 'badge builtin', text: '内置' }) : null),
           el('p', { class: 'note', text: e.meta?.description || (e.injectable ? '可写进 system 段的人设/技能文本。' : NOT_INJECTABLE) }),
         ),
         el('span', { class: 'kind', style: `color:${kind.color}` }, kind.label),
       ),
+      // 内置专家：说清它是随包来的，不是用户导入的，所以没有「删除」只有「停用」
+      e.builtin
+        ? el('p', { class: 'note', text: `随插件分发，${e.meta?.whenToUse ? `何时用：${e.meta.whenToUse}` : '不需要导入，启用即可。'}${e.meta?.source ? `（提炼自 ${e.meta.source}）` : ''}` })
+        : null,
       el('dl', { class: 'facts' },
-        el('dt', { text: '来源' }), el('dd', { text: e.source?.root === 'inline' ? '页面导入（存在 options 里）' : e.source?.root || '—' }),
+        el('dt', { text: '来源' }), el('dd', { text: e.source?.root === 'inline' ? '页面导入（存在 options 里）' : e.builtin ? '插件内置 skills/' : e.source?.root || '—' }),
         el('dt', { text: '路径' }), el('dd', {}, el('code', { text: e.source?.rel || '—' })),
         el('dt', { text: '大小' }), el('dd', { text: e.injectable ? `${e.chars || 0} 字符（上限 64 KB）` : fmtSize(e.size || 0) }),
         el('dt', { text: '摘要' }), el('dd', {}, el('code', { text: short(e.digest) })),
         el('dt', { text: '版本' }), el('dd', { text: `v${e.version ?? 1}${history.length ? ` · 保留 ${history.length} 个旧版` : ''}` }),
-        el('dt', { text: '导入于' }), el('dd', { text: fmtTime(e.importedAt) }),
+        el('dt', { text: '导入于' }), el('dd', { text: e.builtin ? '随插件' : fmtTime(e.importedAt) }),
         e.meta?.sessions !== undefined ? el('dt', { text: '会话数' }) : null,
         e.meta?.sessions !== undefined ? el('dd', { text: String(e.meta.sessions) }) : null,
         e.meta?.turns !== undefined ? el('dt', { text: '选定轮次' }) : null,

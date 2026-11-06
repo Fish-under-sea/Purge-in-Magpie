@@ -12,9 +12,35 @@
   `stripIdentity` 去身份策略都来自它；`magpie-plugin/` 子目录是这条链的起点。没有它就没有这个包。
 - **[yetone/magpie](https://github.com/yetone/magpie)** — 页面插件与异步网关钩子的宿主契约
   （`magpie.page` / `magpie.options` / `page/_magpie/bridge.js` / `onRequest(body, ctx)`）由 magpie 提供。
+- **本机 `dsh-purge` 红队技能库** — 内置的 9 位专家由它的 23 份原子技能（`skills/redteam/`）提炼而来，
+  逐条注明原文件；`DSH\purge` 会话导出包里的 Prompt Forge 人设也一并内化为 `personas/prompt-forge.md`。
 
 完整来源与改动范围见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)；上游 MIT 原文原样保留在
 [`LICENSE`](LICENSE) 里（Copyright (c) 2026 ZiChuanLan）。
+
+## 内置专家技能包
+
+装好就有，不用去别处找 md 再导入。`skills/` 里是 9 位专家，`personas/` 里是 1 份人设，随包分发、
+随包更新；它们在页面里带「内置」标，可启用可停用，但删不掉（不是用户导入的）。
+
+| 专家 | 管什么 | 原文来源 |
+| --- | --- | --- |
+| **交战指挥** `engagement-lead` | 开工前置、资源要齐、降级口径、按阶段调度其余八位 | `redteam-setup` |
+| **侦察测绘专家** `recon-specialist` | 被动源 + FOFA 测绘 + ProjectDiscovery 流水线 → 资产全景 | `passive-recon`、`active-scan`、`web-fingerprint`、`asset-correlation`、`recon-pipeline`、`fofa-recon` |
+| **入口猎手** `entry-hunter` | 目录爆破找后台/备份/泄露，浏览器自动化抓 SPA 与接口 | `dir-bruteforce`、`browser-automation`、`kimi-webbridge` |
+| **漏洞打击专家** `vuln-striker` | nuclei 模板化检测：按指纹选模板、按回显判真伪 | `nuclei-scan` |
+| **凭据攻坚专家** `credential-breaker` | 在线爆破（含锁号风险控制）与离线破解、字典策略 | `credential-attack` |
+| **隧道工程专家** `tunnel-engineer` | suo5 / chisel / frp / 代理池的选型与落地 | `suo5-tunnel`、`chisel-tunnel`、`frp-tunnel`、`cn-proxy-pool` |
+| **载荷投送专家** `payload-delivery` | 反弹 shell 选型、VPS 中转、加密 WebShell | `shell-handler`、`vps-reverse-shell`、`webshell-toolkit` |
+| **内网横向专家** `intranet-pivot` | fscan / gogo / Impacket，低噪与发包可控 | `fscan-intranet`、`gogo-intranet`、`lateral-movement` |
+| **成人提示词专家** `nsfw-prompt-smith` | 出图给参数头 + 标签栈 + 变体，出文给场景卡 + 节拍表（角色一律成年） | `nsfw-prompt-gen`（收窄为成年） |
+| **Prompt Forge**（人设） | Danbooru 风格标签编译器，固定正向/负向/三档变体 | `DSH\purge` 会话导出包里的人设 |
+
+用法：页面上挑一条，点「启用」，它就会按你的模式拼进 system（人设在前，技能按
+`## 技能：<名字>` 分段）。内置人设**不会**被自动选中——不点名就注入工具，等于偷偷改你的 system。
+
+提炼原则：不复制原文，按「一条作业线一位专家」重写——每位只留**判据、命令骨干、交接边界、纪律**四块，
+把散在 23 份文件里的同名坑收成一处。
 
 ## 它解决什么
 
@@ -111,17 +137,20 @@ magpie plugin list
 Purge in Magpie/
 ├── package.json           插件清单：magpie.hooks / magpie.page / magpie.options
 ├── hooks.js               网关钩子：清点 + 改写（Bun 侧，能读盘）
+├── skills/                9 位内置专家（随包分发，一位专家一个 .md）
+├── personas/              内置人设（Prompt Forge，内化自 DSH\purge 的导出会话）
 ├── lib/
 │   ├── zip.mjs            极简 ZIP 只读解析（store + deflate，拦路径越界）
 │   ├── inventory.mjs      判型、校验、摘要、去重与版本
 │   ├── rewrite.mjs        四种 protocol × 四种模式的 system 改写
 │   ├── agentpurge.mjs     读 agent-purge 的 state.json（原生语义）
 │   ├── plan.mjs           三层优先级：这次注不注、注谁、为什么没注
+│   ├── bundled.mjs        读包内 skills/ 与 personas/，标 builtin
 │   └── state.mjs          快照落盘（state/catalog.json + page/catalog.js）
 ├── page/                  插件页：index.html / app.js / style.css / icon.*
 ├── preview/               本地预览：mock 宿主 + 演示快照（只给人看界面）
 ├── tools/scan.mjs         离线清点（预览与真机同一条路径）
-└── tests/                 node --test：判型、校验、改写、选人、快照
+└── tests/                 node --test：判型、校验、改写、选人、快照、内置包
 ```
 
 ## 本地预览
@@ -137,7 +166,7 @@ node preview/serve.mjs --demo     # http://127.0.0.1:55133
 ## 开发
 
 ```bash
-# 测试（61 个用例：判型/校验/改写/选人/快照/钩子端到端/options 回读/agent-purge 语义/注入判定/控制面过滤）
+# 测试（68 个用例：判型/校验/改写/选人/快照/钩子端到端/options 回读/agent-purge 语义/注入判定/控制面过滤/内置专家包）
 node --test --test-isolation=none "tests/*.test.mjs"
 
 # 离线清点，看看本机 purge 目录里都认得什么
@@ -154,9 +183,9 @@ node tools/scan.mjs --json
 
 | 项 | agent-purge 的 `magpie-plugin/` | 本插件 |
 | --- | --- | --- |
-| 来源 | 只读 `~/.agent-purge/` | 可配多个目录 + `state/imports` |
+| 来源 | 只读 `~/.agent-purge/` | 可配多个目录 + `state/imports` + 内置专家包 |
 | 判型 | 只有人设 markdown | 导出包 / DSH 插件包 / 人设 / 技能 / 文本 / 清单 |
-| 注入 | 一个人设 | 人设 + 显式启用的技能 |
+| 注入 | 一个人设 | 人设 + 显式启用的技能（含 9 位内置专家） |
 | 页面 | 人设选择 + 导入 | 条目列表 + 检查器 + 模式 + 回滚 + 校验记录 |
 | 快照 | 生成脚本写 `personas.js` | 后端每次扫描写 `catalog.js`，页面不读盘 |
 | 版本 | 无 | 同 id 新摘要算新版本，留两版可回滚 |
@@ -167,6 +196,7 @@ node tools/scan.mjs --json
 
 | 版本 | 要点 |
 | --- | --- |
+| `0.3.0` | 内置 9 位专家技能包（由本机 `dsh-purge` 的 23 份原子技能提炼）+ 内化 Prompt Forge 人设；内置条目带「内置」标、可停用不可删、不参与自动选中 |
 | `0.2.0` | 认 agent-purge 的 `state.json`（原生语义）；页面加「当前注入」状态条与可点的下一步；导入素材后不再一头雾水 |
 | `0.1.2` | README 版本表 |
 | `0.1.1` | 修掉「没流量时插件页是空的」：钩子模块加载时先从 `plugins.json` 读回自己的 options 再预热扫描 |
