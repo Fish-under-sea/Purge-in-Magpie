@@ -1,4 +1,5 @@
 // 选人与选版本：页面把 id / enabled / pinned 写进 options，钩子只按它取文本。
+// 模式是判定的第一道门：没有模式（且没有 agent-purge state）就不注入。
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { pick } from '../hooks.js'
@@ -18,35 +19,68 @@ test('没指定人设时取第一个启用的人设，技能只认显式启用',
   assert.equal(picked.skills.length, 0)
   assert.equal(picked.text, '新版人设')
 
-  const withSkill = pick(catalog, { enabled: { outline: true } })
+  const withSkill = pick(catalog, { mode: 'append', enabled: { outline: true } })
   assert.equal(withSkill.skills.length, 1)
   assert.equal(withSkill.text, '新版人设\n\n## 技能：提纲\n\n先列三层')
 })
 
 test('固定到旧版本时用旧正文，并标出缺失的固定版本', () => {
-  const pinned = pick(catalog, { persona: 'anima', pinned: { anima: 'd1' } })
+  const pinned = pick(catalog, { mode: 'append', persona: 'anima', pinned: { anima: 'd1' } })
   assert.equal(pinned.text, '旧版人设')
 
-  const missing = pick(catalog, { persona: 'anima', pinned: { anima: 'gone' } })
+  const missing = pick(catalog, { mode: 'append', persona: 'anima', pinned: { anima: 'gone' } })
   assert.equal(missing.text, '新版人设')
   assert.deepEqual(missing.missingPin, ['anima'])
 })
 
-test('人设指向不存在的条目时回落到默认，不注入空文本', () => {
-  const picked = pick(catalog, { persona: 'nope' })
-  assert.equal(picked.personaId, 'anima')
-  assert.ok(picked.text.length > 0)
+test('人设指向不存在的条目时报 persona-missing，不偷偷换成别人', () => {
+  const picked = pick(catalog, { mode: 'append', persona: 'nope' })
+  assert.equal(picked.personaId, '')
+  assert.equal(picked.text, '')
+  assert.equal(picked.plan.blockedCode, 'persona-missing')
+  assert.match(picked.plan.blocked, /nope/)
 })
 
 test('页面导入的人设（options.inline）也参与选择', () => {
   const inline = { inline: [{ id: 'mine', name: '我的人设', kind: 'persona', text: '我自己的正文' }] }
-  const picked = pick(catalog, { ...inline, persona: 'mine' })
+  const picked = pick(catalog, { ...inline, mode: 'append', persona: 'mine' })
   assert.equal(picked.text, '我自己的正文')
 })
 
 test('不可注入的条目不会被选成人设', () => {
   const onlyArchive = { entries: [catalog.entries[2]] }
-  const picked = pick(onlyArchive, {})
+  const picked = pick(onlyArchive, { mode: 'append' })
   assert.equal(picked.personaId, '')
   assert.equal(picked.text, '')
+  assert.match(picked.plan.blocked, /还没有人设/)
+})
+
+test('没有模式（页面没选、agent-purge 也没有）时不注入，并说明原因', () => {
+  const picked = pick(catalog, {})
+  assert.equal(picked.text, '')
+  assert.equal(picked.plan.mode, 'off')
+  assert.match(picked.plan.blocked, /模式是 off/)
+})
+
+test('页面没选模式时跟随 agent-purge 的 state', () => {
+  const state = { bound: true, mode: 'strict', persona: 'anima', disabled: [], overrides: {}, error: '' }
+  const picked = pick(catalog, {}, state, 'claude')
+  assert.equal(picked.plan.mode, 'strict')
+  assert.equal(picked.plan.modeFrom, 'agent-purge')
+  assert.equal(picked.plan.personaFrom, 'agent-purge')
+  assert.equal(picked.text, '新版人设')
+})
+
+test('页面显式选过模式时盖住 agent-purge', () => {
+  const state = { bound: true, mode: 'strict', persona: 'anima', disabled: [], overrides: {}, error: '' }
+  const picked = pick(catalog, { mode: 'append' }, state, 'claude')
+  assert.equal(picked.plan.mode, 'append')
+  assert.equal(picked.plan.modeFrom, 'page')
+})
+
+test('agent-purge 关掉这个 harness 时整个不注入', () => {
+  const state = { bound: true, mode: 'replace', persona: 'anima', disabled: ['claude'], overrides: {}, error: '' }
+  const picked = pick(catalog, { mode: 'append' }, state, 'claude')
+  assert.equal(picked.text, '')
+  assert.match(picked.plan.blocked, /关掉了这个 harness/)
 })

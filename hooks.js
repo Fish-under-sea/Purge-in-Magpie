@@ -12,7 +12,9 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { MODES, compose, rewrite, supported } from './lib/rewrite.mjs'
+import { compose, rewrite, supported } from './lib/rewrite.mjs'
+import { readState } from './lib/agentpurge.mjs'
+import { resolve as resolvePlan } from './lib/plan.mjs'
 import { loadCatalog, ownOptions, paths, sync } from './lib/state.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -37,15 +39,14 @@ export function inlineEntries(options = {}) {
 }
 
 /** pick 选出这一次要注入的文本：人设一条，显式启用的技能若干。 */
-export function pick(catalog, options = {}) {
+export function pick(catalog, options = {}, state = null, agent = '') {
   const entries = [...(Array.isArray(catalog?.entries) ? catalog.entries : []), ...inlineEntries(options)]
   const usable = entries.filter((e) => e.status === 'ok' && e.injectable && typeof e.text === 'string' && e.text.trim())
-  const enabled = (id) => options.enabled?.[id]
   const pinned = options.pinned && typeof options.pinned === 'object' ? options.pinned : {}
 
   /** resolve 按 pinned 取版本：固定到某一版时用那一版的正文，找不到就如实报告。 */
   const missingPin = []
-  const resolve = (entry) => {
+  const resolveEntry = (entry) => {
     const pin = pinned[entry.id]
     if (!pin || !entry.digest || pin === entry.digest) return entry
     const old = (entry.history || []).find((v) => v.digest === pin && v.text)
@@ -53,21 +54,16 @@ export function pick(catalog, options = {}) {
     missingPin.push(entry.id)
     return entry
   }
-
+  const resolved = usable.map(resolveEntry)
   const byId = new Map()
-  for (const e of usable) if (!byId.has(e.id)) byId.set(e.id, resolve(e))
+  for (const e of resolved) if (!byId.has(e.id)) byId.set(e.id, e)
 
-  let personaId = typeof options.persona === 'string' ? options.persona.trim() : ''
-  if (personaId && !byId.has(personaId)) personaId = '' // 指向了不存在的条目：回落到默认
-  if (!personaId) {
-    const firstPersona = usable.find((e) => e.kind === 'persona' && enabled(e.id) !== false)
-    personaId = firstPersona?.id ?? ''
-  }
-  const persona = personaId ? byId.get(personaId) : null
-  const skills = usable.filter((e) => e.kind !== 'persona' && enabled(e.id) === true).map(resolve)
-
-  const text = compose({ persona: persona?.text || '', skills })
-  return { persona, personaId, skills, text, missingPin }
+  // 三层优先级（页面 > agent-purge state.json > 默认）都在 plan.resolve 里判定
+  const plan = resolvePlan({ options, state, entries: resolved, agent })
+  const persona = plan.personaId ? byId.get(plan.personaId) ?? null : null
+  const skills = plan.skills.map((s) => byId.get(s.id)).filter(Boolean)
+  const text = plan.ready ? compose({ persona: persona?.text || '', skills }) : ''
+  return { persona, personaId: plan.personaId, skills, text, missingPin, plan }
 }
 
 /**
@@ -147,7 +143,6 @@ export function createHook(root = here, { deadlineMs = 400, rescanMs = 30_000, w
    */
   async function onRequest(body, ctx) {
     const options = ctx?.options && typeof ctx.options === 'object' ? ctx.options : {}
-    const mode = MODES.includes(options.mode) ? options.mode : 'off'
     const report = (code, bytes = 0) => {
       try {
         ctx?.report?.(code, bytes)
@@ -157,10 +152,7 @@ export function createHook(root = here, { deadlineMs = 400, rescanMs = 30_000, w
     }
     try {
       if (!body || typeof body !== 'object' || Array.isArray(body)) return
-      if (mode === 'off') {
-        report('skipped', 0)
-        return
-      }
+      // 页面只限定范围；真正「这次要不要改」由 plan 判定（页面设置 > agent-purge state > 默认）
       const agents = Array.isArray(options.agents) ? options.agents.filter((a) => typeof a === 'string') : []
       if (agents.length && !agents.includes(ctx?.agent)) {
         report('skipped', 0)
@@ -177,19 +169,24 @@ export function createHook(root = here, { deadlineMs = 400, rescanMs = 30_000, w
         report('skipped', 0)
         return
       }
-      const picked = pick(catalog, options)
+      // state.json 每请求读一次（很小的文件），这样在 agent-purge 里换人设立刻生效
+      const state = readState()
+      const picked = pick(catalog, options, state, ctx?.agent)
       if (!picked.text) {
         report('skipped', 0)
+        rememberSkip(catalog, picked, ctx)
         return
       }
-      rewrite(body, ctx.protocol, picked.text, mode)
+      rewrite(body, ctx.protocol, picked.text, picked.plan.mode)
       remember({
         at: Date.now(),
         agent: ctx?.agent || '',
         protocol: ctx.protocol,
         model: ctx?.model || '',
-        mode,
+        mode: picked.plan.mode,
+        modeFrom: picked.plan.modeFrom,
         persona: picked.personaId,
+        personaFrom: picked.plan.personaFrom,
         skills: picked.skills.map((s) => s.id),
         chars: picked.text.length,
         missingPin: picked.missingPin,
@@ -201,6 +198,25 @@ export function createHook(root = here, { deadlineMs = 400, rescanMs = 30_000, w
       report('invalid', 0)
       return
     }
+  }
+
+  /** rememberSkip 把「为什么没注入」也写下：页面要能回答这个问题，而不是只显示空。 */
+  function rememberSkip(catalog, picked, ctx) {
+    remember({
+      at: Date.now(),
+      agent: ctx?.agent || '',
+      protocol: ctx?.protocol || '',
+      model: ctx?.model || '',
+      mode: picked.plan?.mode || 'off',
+      modeFrom: picked.plan?.modeFrom || '',
+      persona: '',
+      personaFrom: picked.plan?.personaFrom || '',
+      skills: [],
+      chars: 0,
+      missingPin: [],
+      skipped: picked.plan?.blocked || '',
+      catalogVersion: catalog?.version ?? 0,
+    })
   }
 
   return { onRequest, pick, ensureCatalog, warm }

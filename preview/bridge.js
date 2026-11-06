@@ -22,8 +22,9 @@
   for (const [k, v] of Object.entries(tokens)) root.style.setProperty('--magpie-' + k, v)
 
   // 预览里 options 只活在内存：刷新页面就回到默认值。
+  // 第一次 get 时用演示快照的 options 打底——bridge 先于 catalog.js 加载，所以只能惰性取。
   const store = {
-    mode: 'replace',
+    mode: '',
     persona: '',
     agents: [],
     enabled: {},
@@ -32,6 +33,7 @@
     refreshAt: 0,
     inline: [],
   }
+  let seeded = false
 
   const api = {
     theme: { dark, lang: 'zh-CN', tokens },
@@ -46,9 +48,15 @@
     onAction() {},
     options: {
       async get() {
+        if (!seeded) {
+          seeded = true
+          const snapshot = window.PURGE_CATALOG?.options
+          if (snapshot && typeof snapshot === 'object') Object.assign(store, snapshot)
+        }
         return JSON.parse(JSON.stringify(store))
       },
       async set(next) {
+        seeded = true
         Object.assign(store, JSON.parse(JSON.stringify(next || {})))
         return JSON.parse(JSON.stringify(store))
       },

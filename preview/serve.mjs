@@ -3,8 +3,9 @@
 // 不实现网关、不跑 hooks、不碰真实 options；主题跟随 magpie 的变量名，
 // 明暗由 ?theme=dark|light 决定。
 //
-//   node preview/serve.mjs            → http://127.0.0.1:55133
-//   node preview/serve.mjs --demo     → 用 preview/catalog.demo.js 顶替真实快照
+//   node preview/serve.mjs                 → http://127.0.0.1:55133
+//   node preview/serve.mjs --demo          → 用 preview/catalog.demo.js 顶替真实快照
+//   node preview/serve.mjs --demo=blocked  → 只有素材、没选模式那一屏
 //
 // 真机里 page/catalog.js 由 hooks.js 扫描后写出；预览里要么用它，要么用演示快照。
 import http from 'node:http'
@@ -14,7 +15,8 @@ import { fileURLToPath } from 'node:url'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 const root = normalize(join(here, '..'))
-const demo = process.argv.includes('--demo')
+const demoArg = process.argv.find((a) => a === '--demo' || a.startsWith('--demo='))
+const demoFile = demoArg ? (demoArg.includes('=') ? `catalog.${demoArg.split('=')[1]}.js` : 'catalog.demo.js') : ''
 const port = Number(process.env.PREVIEW_PORT || 55133)
 
 const mime = {
@@ -42,8 +44,8 @@ const server = http.createServer(async (req, res) => {
     if (pathname.endsWith('/_magpie/bridge.js')) {
       return send(await readFile(join(here, 'bridge.js'), 'utf8'), mime['.js'])
     }
-    if (pathname.endsWith('/catalog.js') && demo) {
-      return send(await readFile(join(here, 'catalog.demo.js'), 'utf8'), mime['.js'])
+    if (pathname.endsWith('/catalog.js') && demoFile) {
+      return send(await readFile(join(here, demoFile), 'utf8'), mime['.js'])
     }
     const file = pathname.startsWith('/page/') ? join(root, 'page', pathname.slice(6)) : join(root, pathname)
     if (!file.startsWith(root)) return send('forbidden', 'text/plain', 403)
@@ -54,5 +56,5 @@ const server = http.createServer(async (req, res) => {
 })
 
 server.listen(port, '127.0.0.1', () => {
-  console.log(`purge preview: http://127.0.0.1:${port}  （?theme=light 切浅色${demo ? '，演示快照' : ''}）`)
+  console.log(`purge preview: http://127.0.0.1:${port}  （?theme=light 切浅色${demoFile ? `，演示快照 ${demoFile}` : ''}）`)
 })

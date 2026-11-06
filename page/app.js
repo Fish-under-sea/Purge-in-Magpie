@@ -24,6 +24,10 @@
     replace: '人设放最前，宿主 system 里「自称 + 点名模型/厂商」的行删掉。',
     append: '人设放最前，宿主 system 原样保留。',
   }
+  /** NOT_INJECTABLE 说清「这条为什么不会进 system」，并指出下一步：导入的是素材，不是人设。 */
+  const NOT_INJECTABLE =
+    '素材条目：可查、可归档，不会写进 system。要注入请导入人设或技能（.md / .markdown / .txt），' +
+    '或在下方「从本机选文件」里挑一个 md。'
 
   let options = {}
   let catalog = window.PURGE_CATALOG ?? null
@@ -255,7 +259,7 @@
       el('div', { class: 'head' },
         el('div', {},
           el('h2', { text: e.name }),
-          el('p', { class: 'note', text: e.meta?.description || (e.injectable ? '可写进 system 段的人设/技能文本。' : '素材条目：可查、可归档，不参与改写。') }),
+          el('p', { class: 'note', text: e.meta?.description || (e.injectable ? '可写进 system 段的人设/技能文本。' : NOT_INJECTABLE) }),
         ),
         el('span', { class: 'kind', style: `color:${kind.color}` }, kind.label),
       ),
@@ -303,7 +307,15 @@
     const host = $('last')
     const last = catalog?.last
     if (!last) {
-      host.replaceChildren(el('p', { class: 'note', text: '还没有请求经过网关时用到人设。改完模式后，下一次 agent 请求会写下这一行。' }))
+      host.replaceChildren(el('p', { class: 'note', text: '还没有请求经过网关。改完模式后，下一次 agent 请求会写下这一行。' }))
+      return
+    }
+    if (last.skipped) {
+      // 放行了也要说清为什么：只显示「没注入」等于什么也没说
+      host.replaceChildren(
+        el('p', { class: 'note', text: `${fmtTime(last.at)} · ${last.agent || '未知 agent'} · ${last.protocol || '—'}` }),
+        el('p', { class: 'warn', text: `这次没有注入：${last.skipped}` }),
+      )
       return
     }
     host.replaceChildren(
@@ -320,8 +332,9 @@
       const shown = visible().length
       $('count').textContent = `${shown} / ${entries().length + inlineEntries().length} 条 · 快照 v${catalog.version} · ${fmtTime(catalog.generatedAt)}`
     }
-    $('mode').value = MODES().includes(options.mode) ? options.mode : 'off'
-    $('mode-help').textContent = MODE_HELP[$('mode').value] || ''
+    $('mode').value = MODES().includes(options.mode) ? options.mode : ''
+    $('mode-help').textContent = modeHelp($('mode').value)
+    renderPlan()
     renderFilters()
     renderList()
     renderInspector()
@@ -330,7 +343,81 @@
     renderSources()
   }
 
-  const MODES = () => ['off', 'strict', 'replace', 'append']
+  /** MODES 是模式下拉的全部取值：空串 = 跟随 agent-purge。 */
+  const MODES = () => ['', 'off', 'strict', 'replace', 'append']
+
+  /** modeHelp 说清当前值到底意味着什么，尤其是「跟随 agent-purge」时用的是它的什么值。 */
+  function modeHelp(value) {
+    if (value) return MODE_HELP[value] || ''
+    const p = catalog?.purge
+    if (!p?.bound) return '没装 agent-purge 或读不到它的 state.json：等价于 off，不会改请求。'
+    if (p.error) return `agent-purge 的 state.json 有问题：${p.error}；等价于 off。`
+    return `跟随 agent-purge：当前 ${p.mode || '未设置'}${p.persona ? ` · 人设 ${p.persona}` : ''}`
+  }
+
+  /**
+   * renderPlan 是「现在到底注不注、注谁、为什么没注」那一行。
+   * 判定由后端算好放在快照的 plan 里（页面不能读 agent-purge 的 state.json）。
+   */
+  function renderPlan() {
+    const host = $('plan')
+    const plan = catalog?.plan
+    if (!plan) {
+      host.dataset.state = 'idle'
+      host.replaceChildren(
+        el('span', { class: 'dot' }),
+        el('span', { class: 'empty', text: '还没有判定：等后端第一次扫描' }),
+      )
+      return
+    }
+    const ready = Boolean(plan.ready)
+    const fromText = { page: '本页设置', 'agent-purge': 'agent-purge', auto: '自动（第一个启用的人设）', default: '默认' }
+    host.dataset.state = ready ? 'ready' : 'blocked'
+
+    // 没就绪时给一个能点的下一步：光说「不会注入」等于把问题丢回给人。
+    // 每个按钮都顺带 refreshAt：宿主重建插件进程后按新设置重扫，plan 才会跟着变。
+    const fix = []
+    const fixed = (patch, note) => {
+      save({ ...patch, refreshAt: Date.now() }, note)
+      pollSnapshot('等后端按新设置重扫…', 25)
+    }
+    if (!ready) {
+      if (plan.blockedCode === 'no-mode' || plan.blockedCode === 'mode-off') {
+        fix.push(el('button', { type: 'button', class: 'primary', onclick: () => fixed({ mode: 'replace' }, '模式改为 replace') }, '用 replace 开始注入'))
+      }
+      if (plan.blockedCode === 'no-persona' || plan.blockedCode === 'persona-missing') {
+        fix.push(el('button', {
+          type: 'button',
+          class: 'primary',
+          onclick: () => { filter = 'persona'; query = ''; render() },
+        }, '去看人设'))
+      }
+      if (plan.blockedCode === 'no-persona-file') {
+        fix.push(el('button', {
+          type: 'button',
+          class: 'primary',
+          onclick: () => { $('import-file')?.focus(); $('import-file')?.click?.() },
+        }, '导入一份人设'))
+      }
+    }
+
+    const rows = [
+      el('span', { class: 'dot' }),
+      el('span', { class: ready ? 'who' : 'empty' }, ready
+        ? `下一次 agent 请求会注入「${plan.personaName || plan.personaId}」`
+        : '现在不会注入：请求原样放行'),
+      el('span', { class: 'actions' },
+        el('span', { class: 'tag', text: `模式 ${plan.mode} · ${fromText[plan.modeFrom] || plan.modeFrom || '默认'}` }),
+        ready && plan.skills?.length ? el('span', { class: 'tag', text: `技能 ${plan.skills.length} 条` }) : null,
+        ...fix,
+        el('button', { type: 'button', class: 'ghost', onclick: () => refresh() }, '重扫确认'),
+      ),
+      el('span', { class: 'why', text: ready
+        ? `人设来源：${fromText[plan.personaFrom] || plan.personaFrom}${catalog?.purge?.bound ? '；agent-purge 的 state.json 已读到' : '；没读到 agent-purge 的 state.json'}`
+        : `${plan.blocked}${catalog?.purge?.bound ? '' : '（没读到 agent-purge 的 state.json）'}` }),
+    ]
+    host.replaceChildren(...rows.filter(Boolean))
+  }
 
   function renderSources() {
     const el2 = $('sources')
@@ -394,7 +481,10 @@
   }
 
   function wire() {
-    $('mode').addEventListener('change', (e) => save({ mode: e.target.value }, `模式改为 ${e.target.value}`))
+    $('mode').addEventListener('change', (e) => {
+      const value = e.target.value
+      save({ mode: value }, value ? `模式改为 ${value}` : '改为跟随 agent-purge')
+    })
     $('refresh').addEventListener('click', refresh)
     $('q').addEventListener('input', (e) => { query = e.target.value; render() })
 

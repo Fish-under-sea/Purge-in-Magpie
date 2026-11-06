@@ -78,6 +78,36 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   border-radius: 0 8px 8px 0;
 }
 
+/* 当前注入：这一行回答「到底注不注、注谁、为什么没注」 */
+.plan {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  gap: 4px 12px;
+  align-items: center;
+  margin: 0 0 16px;
+  padding: 10px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+}
+.plan[data-state="ready"] { border-color: color-mix(in oklab, var(--kind-plugin) 45%, var(--line)); }
+.plan[data-state="blocked"] { border-color: color-mix(in oklab, var(--danger) 35%, var(--line)); }
+.plan .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.plan[data-state="ready"] .dot { background: var(--kind-plugin); }
+.plan[data-state="blocked"] .dot { background: var(--danger); }
+.plan .who { font-weight: 500; }
+.plan .why { grid-column: 2 / -1; color: var(--muted); font-size: 12px; }
+.plan .tag {
+  font-size: 12px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.plan .actions { display: flex; gap: 8px; align-items: center; }
+.plan .empty { color: var(--muted); }
+
 /* ---------- 主体：左列表 / 右检查器 ---------- */
 .grid {
   display: grid;

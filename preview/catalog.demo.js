@@ -80,6 +80,18 @@ window.PURGE_CATALOG = {
   ],
   options: { mode: 'replace', persona: 'anima', enabled: { outline: true }, agents: [] },
   imports: [],
+  purge: { bound: true, mode: 'replace', persona: 'anima', disabled: [], error: '' },
+  plan: {
+    mode: 'replace',
+    modeFrom: 'page',
+    personaId: 'anima',
+    personaName: 'Anima',
+    personaFrom: 'page',
+    skills: [{ id: 'outline', name: '提纲', text: '先列三层' }],
+    blocked: '',
+    blockedCode: '',
+    ready: true,
+  },
   last: {
     at: 1794561421000,
     agent: 'claude',

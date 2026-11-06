@@ -46,8 +46,8 @@ magpie plugin list
 
 | 字段 | 作用 |
 | --- | --- |
-| `mode` | `off` / `strict` / `replace` / `append`；默认 `off` |
-| `persona` | 用哪条人设的 id；留空取第一个启用的人设 |
+| `mode` | `off` / `strict` / `replace` / `append`；**留空 = 跟随 `agent-purge` 的 `state.json`**，两边都没有就是 off |
+| `persona` | 用哪条人设的 id；留空取 `agent-purge` 的人设，再留空取第一个启用的人设 |
 | `agents` | 只对这些 magpie agent 生效，如 `["claude","codex"]`；空数组 = 全部 |
 | `enabled` | `{条目id: true/false}`：技能必须显式为 `true` 才注入；人设默认启用 |
 | `pinned` | `{条目id: 摘要}`：固定到某一版，网关用那一版的正文 |
@@ -56,12 +56,46 @@ magpie plugin list
 | `inline` | 页面里直接贴进来的人设/技能正文，不进磁盘 |
 | `gatewayTimeoutMs` | 钩子预算，默认 1500 ms（magpie 侧 100–10000） |
 
+### 与 agent-purge 自己的设置怎么合并
+
+本插件认 agent-purge 的原生语义（读 `AGENT_PURGE_HOME` 或 `~/.agent-purge/state.json`）：
+
+```json
+{ "default": { "mode": "replace" }, "persona": "anima",
+  "overrides": { "codex": { "mode": "strict", "persona": "other" } },
+  "disabledHarnesses": ["grok"] }
+```
+
+按三层取，先到先得：
+
+| 层 | `mode` | `persona` |
+| --- | --- | --- |
+| 1 | 插件页选过的值 | 插件页选过的人设 |
+| 2 | `state.json` 的 `override[agent].mode` → `default.mode` | `override[agent].persona` → `state.persona` |
+| 3 | 兜底 `off` | 第一个启用的人设 |
+
+**所以两件事同时成立**：在 agent-purge 里换人设，下一个请求立刻跟着换；在插件页点一下，也立刻生效，
+不必去改 `state.json`。agent-purge 里 `disabledHarnesses` 含这个 agent、或 `default.mode` 是 `off` 时，
+本插件一样不做——页面的状态条会写明「agent-purge 里关掉了这个 harness」。
+
+指向的人设不在来源里时，**不会偷偷换成别人**：状态条直接说「指定的 X 不在当前来源里」。
+
 模式语义与上游一致：
 
 - `off`：不动请求；
 - `strict`：整段可控 system 换成人设——**原 system 里的工具说明文本也会一起没了**；
 - `replace`：人设放最前，宿主 system 里「自称 + 点名模型/厂商」的行删掉（近似）；
 - `append`：人设放最前，宿主 system 原样保留。
+
+## 页面怎么告诉你「到底注不注」
+
+页面顶部那条状态就是答案，三种样子：
+
+- **绿点**「下一次 agent 请求会注入「Anima」」+ 模式与人设的来源（本页设置 / agent-purge / 自动）；
+- **红点**「现在不会注入：请求原样放行」+ 具体原因 + 一个能点的下一步（「用 replace 开始注入」/「去看人设」/「导入一份人设」）；
+- 底部「最近一次生效」：真跑过就写人设、技能、字符数；被放行就写**为什么**放行。
+
+导入的 `.zip` 是素材（会话导出包、DSH 插件包），**不会进 system**——检查器里会直说，别把素材当人设。
 
 ## 边界（照实说，不含糊）
 
@@ -81,6 +115,8 @@ Purge in Magpie/
 │   ├── zip.mjs            极简 ZIP 只读解析（store + deflate，拦路径越界）
 │   ├── inventory.mjs      判型、校验、摘要、去重与版本
 │   ├── rewrite.mjs        四种 protocol × 四种模式的 system 改写
+│   ├── agentpurge.mjs     读 agent-purge 的 state.json（原生语义）
+│   ├── plan.mjs           三层优先级：这次注不注、注谁、为什么没注
 │   └── state.mjs          快照落盘（state/catalog.json + page/catalog.js）
 ├── page/                  插件页：index.html / app.js / style.css / icon.*
 ├── preview/               本地预览：mock 宿主 + 演示快照（只给人看界面）
@@ -101,7 +137,7 @@ node preview/serve.mjs --demo     # http://127.0.0.1:55133
 ## 开发
 
 ```bash
-# 测试（36 个用例：判型/校验/改写/选人/快照/钩子端到端/options 回读）
+# 测试（58 个用例：判型/校验/改写/选人/快照/钩子端到端/options 回读/agent-purge 语义/注入判定）
 node --test --test-isolation=none "tests/*.test.mjs"
 
 # 离线清点，看看本机 purge 目录里都认得什么
@@ -124,11 +160,15 @@ node tools/scan.mjs --json
 | 页面 | 人设选择 + 导入 | 条目列表 + 检查器 + 模式 + 回滚 + 校验记录 |
 | 快照 | 生成脚本写 `personas.js` | 后端每次扫描写 `catalog.js`，页面不读盘 |
 | 版本 | 无 | 同 id 新摘要算新版本，留两版可回滚 |
+| 与 agent-purge 的关系 | 读 `state.json` 但页面改不了模式 | **认它的 state.json**（mode/persona/overrides/disabledHarnesses），同时页面设置优先，两边都能改 |
+| 状态可见性 | 无 | 顶部状态条直接回答「注不注、注谁、为什么没注」 |
 
 ## 版本
 
 | 版本 | 要点 |
 | --- | --- |
+| `0.2.0` | 认 agent-purge 的 `state.json`（原生语义）；页面加「当前注入」状态条与可点的下一步；导入素材后不再一头雾水 |
+| `0.1.2` | README 版本表 |
 | `0.1.1` | 修掉「没流量时插件页是空的」：钩子模块加载时先从 `plugins.json` 读回自己的 options 再预热扫描 |
 | `0.1.0` | 首个版本 |
 

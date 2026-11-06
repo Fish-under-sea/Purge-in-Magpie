@@ -23,6 +23,7 @@
     <span class="mode-label" id="mode-label">改写模式</span>
     <div class="mode-row">
       <select id="mode" aria-labelledby="mode-label">
+        <option value="">跟随 agent-purge</option>
         <option value="off">off · 不动请求</option>
         <option value="strict">strict · 只留人设</option>
         <option value="replace">replace · 人设 + 去掉自称</option>
@@ -39,6 +40,8 @@
   strict 会连原 system 里的工具说明文本一起换掉，结构化工具定义不在网关这一层。
   页面不读磁盘：条目由插件后端扫描后写成快照，页面只显示它。
 </p>
+
+<section class="plan" id="plan" aria-label="当前注入状态" aria-live="polite"></section>
 
 <div class="grid">
   <section aria-label="条目列表">
