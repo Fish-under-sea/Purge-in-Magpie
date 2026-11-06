@@ -238,15 +238,18 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 .seg-action.is-applied:hover { background: color-mix(in oklab, var(--ok) 20%, transparent); }
 
 /* ---------- 主体：左列表 / 右组装 ---------- */
+/* stretch 让左栏跟右栏等高：右边展开原文后会变很高，左栏若按自己内容收着，
+   底下就是一大片空白。 */
 .work {
   display: grid;
   grid-template-columns: minmax(300px, 352px) minmax(0, 1fr);
   gap: 26px;
-  align-items: start;
+  align-items: stretch;
 }
-@media (max-width: 900px) { .work { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 900px) { .work { grid-template-columns: minmax(0, 1fr); align-items: start; } }
 
-.rail { min-width: 0; }
+/* 左栏自己纵向排布，列表吃掉剩余高度 */
+.rail { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .rail-tools { display: grid; gap: 10px; }
 .rail-tools input { width: 100%; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -263,16 +266,19 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 .rail-count { margin: 12px 0 8px; color: var(--muted); font-size: 12px; }
 
 .list { display: grid; gap: 1px; border-top: 1px solid var(--line); }
-/* 桌面端列表自己滚：条目多时不让整页跟着长，右栏也不会剩一大片空白。
+/* 桌面端列表自己滚，并且跟着右栏拉长：右栏展开原文后会很高，
+   列表若固定 540px 就留一大片空白。给一个下限，免得条目少时它缩成一条。
    窄屏不做嵌套滚动——那比页面滚动难用。
    底部加一层淡出：滚动区硬切会把最后一行切成半截，看起来像坏了。 */
 @media (min-width: 901px) {
   .list {
-    max-height: min(58vh, 540px);
+    flex: 1 1 auto;
+    min-height: min(58vh, 540px);
     overflow-y: auto;
     overscroll-behavior: contain;
     padding-bottom: 4px;
     mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+    align-content: start;
   }
   .list:has(> .row:last-child:first-child) { mask-image: none; }
 }
@@ -400,10 +406,12 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   font-variant-numeric: tabular-nums;
 }
 
-/* 一键启用：把九个专家的开关摊平，点一下即生效 */
+/* 一键启用：把专家的开关摊平，点一下即生效。
+   芯片自带一个小方框（未选是空心，选中是实心带勾）——只靠文字颜色区分，
+   一片 chip 里哪几个开着要一行行读，方框扫一眼就有答案。 */
 .picker { margin-top: 28px; }
 .picker h3 {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
   font-size: 13px;
   font-weight: 560;
   display: flex;
@@ -411,21 +419,70 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   gap: 10px;
   flex-wrap: wrap;
 }
-.picks { display: flex; flex-wrap: wrap; gap: 8px; }
+.picker-count {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+.picker h3 .h2-sub { margin-left: auto; }
+
+.pick-group { display: grid; gap: 6px; }
+.pick-group + .pick-group { margin-top: 10px; }
+.pick-group-label {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: .02em;
+}
+
+.picks { display: flex; flex-wrap: wrap; gap: 7px; }
 .pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-size: 12.5px;
-  padding: 4px 12px;
-  min-height: 28px;
+  padding: 4px 11px 4px 9px;
+  min-height: 30px;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: transparent;
   color: var(--muted);
+  transition: border-color .12s ease, background-color .12s ease, color .12s ease;
 }
-.pick:hover:not(:disabled) { color: var(--ink); }
+.pick:hover { color: var(--ink); border-color: color-mix(in oklab, var(--muted) 55%, var(--line)); }
 .pick.is-on {
   background: color-mix(in oklab, var(--kind-skill) 14%, transparent);
   border-color: color-mix(in oklab, var(--kind-skill) 45%, var(--line));
   color: var(--ink);
+}
+/* 方框：未选空心，选中填色并显示勾 */
+.pick-mark {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  border-radius: 4px;
+  border: 1.5px solid color-mix(in oklab, var(--muted) 60%, var(--line));
+  position: relative;
+}
+.pick.is-on .pick-mark {
+  border-color: var(--kind-skill);
+  background: var(--kind-skill);
+}
+.pick.is-on .pick-mark::after {
+  content: "";
+  position: absolute;
+  left: 3.5px;
+  top: 1px;
+  width: 3.5px;
+  height: 7px;
+  border-right: 1.6px solid var(--bg);
+  border-bottom: 1.6px solid var(--bg);
+  transform: rotate(40deg);
+}
+.pick-size {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 详情

@@ -18,6 +18,7 @@ const read = (...p) => readFileSync(join(here, ...p), 'utf8')
 const html = read('page', 'index.html')
 const css = read('page', 'style.css')
 const app = read('page', 'app.js')
+const plan = read('page', 'plan.js')
 const bridge = read('preview', 'bridge.js')
 const icon = read('page', 'icon.svg')
 const ready = read('preview', 'catalog.demo.js')
@@ -106,6 +107,8 @@ const out = html
   // app.js 原本是 defer：内联到 <head> 里会赶在 DOM 之前跑，什么都取不到。
   // 所以从这个位置摘掉，放到 </body> 前。
   .replace('<script src="app.js" defer></script>', '')
+  // plan.js 是纯计算、不碰 DOM，留在原位内联即可（app.js 依赖它）。
+  .replace('<script src="plan.js"></script>', `<script>\n${plan}\n</script>`)
   .replace('</body>', `<script>\n${app}\n</script>\n</body>`)
   .replace('src="icon.svg"', `src="${iconUri}"`)
   .replace('<body>', `<body>\n${chrome}`)

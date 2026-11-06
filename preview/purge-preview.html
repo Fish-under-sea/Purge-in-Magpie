@@ -308,6 +308,111 @@ window.__PURGE_BLOCKED__ = {
   window.__PURGE_PICK__ = pick
 })()
 </script>
+<script>
+// 页面侧的「这次到底注不注入」判定。
+//
+// 为什么页面要自己算一遍：后端只在有请求经过网关时才重扫并写快照。
+// 用户在页面上改完模式/人设/技能，只要还没发起 agent 请求，快照就一直是旧的——
+// 状态条说「等重扫」、点技能看着没反应、装配面板空着，全是这一件事引起的。
+//
+// 这里的规则必须与 lib/plan.mjs 一致（Node 侧用它决定真改不改请求）。
+// 两边不同步的话，页面会答应一件网关不会做的事——所以 tests/plan-parity.test.mjs
+// 拿同一批输入分别跑两边，逐个比结果。
+//
+// 与 lib/plan.mjs 的唯一差别：这里不含 agent-purge 那一层。
+// 页面读不到 state.json，useAgentPurge 打开时由调用方改用快照里的 plan。
+;(() => {
+  const MODES = ['off', 'strict', 'replace', 'append']
+
+  const blank = (modeFrom, mode, blocked, blockedCode) => ({
+    mode: mode || 'off',
+    modeFrom,
+    personaId: '',
+    personaName: '',
+    personaFrom: '',
+    skills: [],
+    blocked,
+    blockedCode: blockedCode || '',
+    ready: false,
+    missingPersona: '',
+  })
+
+  /** resolve 与 lib/plan.mjs 同语义：页面设置优先，人设优先标了 default 的底座人设。 */
+  function resolve({ options = {}, entries = [] } = {}) {
+    const pageMode = MODES.includes(options.mode) ? options.mode : ''
+    const mode = pageMode || 'off'
+    const modeFrom = pageMode ? 'page' : 'default'
+    if (mode === 'off') {
+      return {
+        ...blank(modeFrom, mode, '', modeFrom === 'default' ? 'no-mode' : 'mode-off'),
+        blocked: modeFrom === 'default'
+          ? '还没选模式：模式是 off，请求原样放行。选一个模式（比如 replace）就开始注入'
+          : '当前模式是 off，请求原样放行',
+      }
+    }
+
+    const byId = new Map()
+    for (const e of entries) if (e && typeof e.id === 'string' && !byId.has(e.id)) byId.set(e.id, e)
+    const personas = entries.filter((e) => e.kind === 'persona')
+
+    let personaId = ''
+    let personaFrom = ''
+    let missingPersona = ''
+    const pagePersona = typeof options.persona === 'string' ? options.persona.trim() : ''
+    if (pagePersona && byId.has(pagePersona)) {
+      personaId = pagePersona
+      personaFrom = 'page'
+    } else if (pagePersona) {
+      missingPersona = pagePersona
+    } else {
+      const fallback =
+        personas.find((e) => e.default === true && options.enabled?.[e.id] !== false) ||
+        personas.find((e) => e.builtin !== true && options.enabled?.[e.id] !== false)
+      if (fallback) {
+        personaId = fallback.id
+        personaFrom = 'auto'
+      }
+    }
+
+    if (!personaId) {
+      if (missingPersona) {
+        const names = personas.slice(0, 4).map((e) => e.name || e.id).join('、')
+        return {
+          ...blank(modeFrom, mode, '', 'persona-missing'),
+          blocked: names
+            ? `指定的「${missingPersona}」已经不在了：现在可用的有 ${names}${personas.length > 4 ? ' 等' : ''}`
+            : `指定的「${missingPersona}」已经不在了，来源里也还没有其它人设`,
+          missingPersona,
+        }
+      }
+      const why = personas.length
+        ? '还没有选人设：左边挑一条「人设」点"设为当前人设"'
+        : '来源里还没有人设（.md）：导入一份试试'
+      return { ...blank(modeFrom, mode, '', personas.length ? 'no-persona' : 'no-persona-file'), blocked: why }
+    }
+
+    const persona = byId.get(personaId)
+    const skills = entries
+      .filter((e) => e.kind !== 'persona' && options.enabled?.[e.id] === true)
+      .map((e) => ({ id: e.id, name: e.name, text: e.text }))
+
+    return {
+      mode,
+      modeFrom,
+      personaId,
+      personaName: persona?.name || personaId,
+      personaFrom,
+      skills,
+      blocked: '',
+      blockedCode: '',
+      ready: true,
+    }
+  }
+
+  globalThis.PurgePlan = { resolve, MODES }
+})()
+
+</script>
 <style>
 /* 破甲 · Purge 的页面样式。
    颜色一律吃 magpie 自己的主题变量（--magpie-*），没给就用中和的回落值：
@@ -549,15 +654,18 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 .seg-action.is-applied:hover { background: color-mix(in oklab, var(--ok) 20%, transparent); }
 
 /* ---------- 主体：左列表 / 右组装 ---------- */
+/* stretch 让左栏跟右栏等高：右边展开原文后会变很高，左栏若按自己内容收着，
+   底下就是一大片空白。 */
 .work {
   display: grid;
   grid-template-columns: minmax(300px, 352px) minmax(0, 1fr);
   gap: 26px;
-  align-items: start;
+  align-items: stretch;
 }
-@media (max-width: 900px) { .work { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 900px) { .work { grid-template-columns: minmax(0, 1fr); align-items: start; } }
 
-.rail { min-width: 0; }
+/* 左栏自己纵向排布，列表吃掉剩余高度 */
+.rail { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .rail-tools { display: grid; gap: 10px; }
 .rail-tools input { width: 100%; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -574,16 +682,19 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 .rail-count { margin: 12px 0 8px; color: var(--muted); font-size: 12px; }
 
 .list { display: grid; gap: 1px; border-top: 1px solid var(--line); }
-/* 桌面端列表自己滚：条目多时不让整页跟着长，右栏也不会剩一大片空白。
+/* 桌面端列表自己滚，并且跟着右栏拉长：右栏展开原文后会很高，
+   列表若固定 540px 就留一大片空白。给一个下限，免得条目少时它缩成一条。
    窄屏不做嵌套滚动——那比页面滚动难用。
    底部加一层淡出：滚动区硬切会把最后一行切成半截，看起来像坏了。 */
 @media (min-width: 901px) {
   .list {
-    max-height: min(58vh, 540px);
+    flex: 1 1 auto;
+    min-height: min(58vh, 540px);
     overflow-y: auto;
     overscroll-behavior: contain;
     padding-bottom: 4px;
     mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+    align-content: start;
   }
   .list:has(> .row:last-child:first-child) { mask-image: none; }
 }
@@ -711,10 +822,12 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   font-variant-numeric: tabular-nums;
 }
 
-/* 一键启用：把九个专家的开关摊平，点一下即生效 */
+/* 一键启用：把专家的开关摊平，点一下即生效。
+   芯片自带一个小方框（未选是空心，选中是实心带勾）——只靠文字颜色区分，
+   一片 chip 里哪几个开着要一行行读，方框扫一眼就有答案。 */
 .picker { margin-top: 28px; }
 .picker h3 {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
   font-size: 13px;
   font-weight: 560;
   display: flex;
@@ -722,21 +835,70 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   gap: 10px;
   flex-wrap: wrap;
 }
-.picks { display: flex; flex-wrap: wrap; gap: 8px; }
+.picker-count {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+.picker h3 .h2-sub { margin-left: auto; }
+
+.pick-group { display: grid; gap: 6px; }
+.pick-group + .pick-group { margin-top: 10px; }
+.pick-group-label {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: .02em;
+}
+
+.picks { display: flex; flex-wrap: wrap; gap: 7px; }
 .pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-size: 12.5px;
-  padding: 4px 12px;
-  min-height: 28px;
+  padding: 4px 11px 4px 9px;
+  min-height: 30px;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: transparent;
   color: var(--muted);
+  transition: border-color .12s ease, background-color .12s ease, color .12s ease;
 }
-.pick:hover:not(:disabled) { color: var(--ink); }
+.pick:hover { color: var(--ink); border-color: color-mix(in oklab, var(--muted) 55%, var(--line)); }
 .pick.is-on {
   background: color-mix(in oklab, var(--kind-skill) 14%, transparent);
   border-color: color-mix(in oklab, var(--kind-skill) 45%, var(--line));
   color: var(--ink);
+}
+/* 方框：未选空心，选中填色并显示勾 */
+.pick-mark {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  border-radius: 4px;
+  border: 1.5px solid color-mix(in oklab, var(--muted) 60%, var(--line));
+  position: relative;
+}
+.pick.is-on .pick-mark {
+  border-color: var(--kind-skill);
+  background: var(--kind-skill);
+}
+.pick.is-on .pick-mark::after {
+  content: "";
+  position: absolute;
+  left: 3.5px;
+  top: 1px;
+  width: 3.5px;
+  height: 7px;
+  border-right: 1.6px solid var(--bg);
+  border-bottom: 1.6px solid var(--bg);
+  transform: rotate(40deg);
+}
+.pick-size {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 详情
@@ -1322,7 +1484,7 @@ pre.text {
    */
   function renderAssembly() {
     const host = $('assembly')
-    const plan = catalog?.plan
+    const plan = currentPlan()
     const last = catalog?.last
     if (!plan) {
       host.replaceChildren(el('h2', {}, '注入组装'))
@@ -1371,14 +1533,15 @@ pre.text {
 
   /**
    * renderExpertPicker 是「一键启用专家」：这里是每天重复最多的动作。
-   * 不用逐条点开再点启用——九个专家的开关摊在同一行，点一下就切。
+   * 不用逐条点开再点启用——专家的开关摊在同一片区域，点一下就切。
    * 只列技能：人设是「谁来写」，走另一条路（详情里的「设为当前人设」）。
    */
   function renderExpertPicker() {
-    const skills = entries().filter((e) => e.injectable && e.kind === 'skill' && e.builtin)
+    const builtin = entries().filter((e) => e.injectable && e.kind === 'skill' && e.builtin)
     const mine = entries().filter((e) => e.injectable && e.kind === 'skill' && !e.builtin)
-    const all = [...skills, ...mine]
+    const all = [...builtin, ...mine]
     if (!all.length) return null
+
     const chip = (e) => {
       const on = isEnabled(e.id)
       return el('button', {
@@ -1387,12 +1550,31 @@ pre.text {
         'aria-pressed': on ? 'true' : 'false',
         title: on ? `停用「${e.name}」` : `启用「${e.name}」`,
         onclick: () => save({ enabled: { ...(options.enabled || {}), [e.id]: !on } }, on ? `已停用「${e.name}」` : `已启用「${e.name}」`),
-      }, on ? '✓ ' : '', e.name)
+      },
+        el('span', { class: 'pick-mark', 'aria-hidden': 'true' }),
+        el('span', { class: 'pick-name', text: e.name }),
+        el('span', { class: 'pick-size', text: `${e.chars || 0}` }),
+      )
     }
+
+    const onCount = all.filter((e) => isEnabled(e.id)).length
+    // 分组只在真的有「我的」时才显示：只有内置时还分两栏，等于白占一行。
+    const groups = [
+      mine.length ? { label: '内置', rows: builtin } : null,
+      mine.length ? { label: '我的来源', rows: mine } : null,
+      mine.length ? null : { label: '', rows: all },
+    ].filter(Boolean)
+
     return el('section', { class: 'picker', 'aria-label': '启用专家' },
-      el('h3', {}, '启用的专家',
-        el('span', { class: 'h2-sub', text: '点一下即生效，不必逐条打开' })),
-      el('div', { class: 'picks' }, ...all.map(chip)),
+      el('h3', {},
+        el('span', { text: '启用的专家' }),
+        el('span', { class: 'picker-count', text: `${onCount} / ${all.length}` }),
+        el('span', { class: 'h2-sub', text: '点一下即生效' }),
+      ),
+      ...groups.map((g) => el('div', { class: 'pick-group' },
+        g.label ? el('span', { class: 'pick-group-label', text: g.label }) : null,
+        el('div', { class: 'picks' }, ...g.rows.map(chip)),
+      )),
     )
   }
 
@@ -1694,12 +1876,30 @@ pre.text {
   }
 
   /**
+   * currentPlan 是「现在这套设置会让网关怎么做」。
+   *
+   * 优先本地算：后端只在有请求经过时才重扫写快照，不动 agent 的话快照永远旧，
+   * 技能开关、装配面板、状态条就全都停在改之前的样子。
+   * 只有 useAgentPurge 打开时才不得不用快照——state.json 只有后端读得到。
+   */
+  function currentPlan() {
+    if (options.useAgentPurge === true) return catalog?.plan || null
+    const api = globalThis.PurgePlan
+    if (!api) return catalog?.plan || null
+    const usable = [...entries(), ...inlineEntries().map(shaped)]
+      .filter((e) => e.status === 'ok' && e.injectable && typeof e.text === 'string' && e.text.trim())
+    return api.resolve({ options, entries: usable })
+  }
+
+  /**
    * renderPlan 是「现在到底注不注、注谁、为什么没注」那一行。
-   * 判定由后端算好放在快照的 plan 里（页面不能读磁盘）。
+   *
+   * 判定用 currentPlan()：本地算，所以改完设置立刻反映，不用等后端重扫。
+   * 快照里的 plan 只在 useAgentPurge 打开时才用得上（state.json 只有后端读得到）。
    */
   function renderPlan() {
     const host = $('plan')
-    const plan = catalog?.plan
+    const plan = currentPlan()
     if (!plan) {
       host.dataset.state = 'idle'
       host.replaceChildren(
@@ -1709,9 +1909,8 @@ pre.text {
       return
     }
     const ready = Boolean(plan.ready)
-    // plan 是后端上一次扫描算出来的；本地刚改过设置时它就过期了。
-    // 状态条左边说「已选 append」、右边却还在劝「用 replace 开始注入」，
-    // 就是因为胶囊读本地、按钮读快照。这里先认出来，过期就别再按旧的劝。
+    // 判定已经是本地的了，正常情况下不会过期；留这条只在 useAgentPurge 模式下生效，
+    // 那种模式页面算不了，只能拿快照，仍可能出现「刚改完还没重扫」的短暂不一致。
     const stale = planStale(plan)
     // personaFrom 的三种来源，用户一眼要能看懂「谁在顶着」：
     //   page = 自己点的、auto = 底座人设自动顶上、default = agent-purge（仅在显式开启时）

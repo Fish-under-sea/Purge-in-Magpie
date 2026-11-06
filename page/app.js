@@ -264,7 +264,7 @@
    */
   function renderAssembly() {
     const host = $('assembly')
-    const plan = catalog?.plan
+    const plan = currentPlan()
     const last = catalog?.last
     if (!plan) {
       host.replaceChildren(el('h2', {}, '注入组装'))
@@ -313,14 +313,15 @@
 
   /**
    * renderExpertPicker 是「一键启用专家」：这里是每天重复最多的动作。
-   * 不用逐条点开再点启用——九个专家的开关摊在同一行，点一下就切。
+   * 不用逐条点开再点启用——专家的开关摊在同一片区域，点一下就切。
    * 只列技能：人设是「谁来写」，走另一条路（详情里的「设为当前人设」）。
    */
   function renderExpertPicker() {
-    const skills = entries().filter((e) => e.injectable && e.kind === 'skill' && e.builtin)
+    const builtin = entries().filter((e) => e.injectable && e.kind === 'skill' && e.builtin)
     const mine = entries().filter((e) => e.injectable && e.kind === 'skill' && !e.builtin)
-    const all = [...skills, ...mine]
+    const all = [...builtin, ...mine]
     if (!all.length) return null
+
     const chip = (e) => {
       const on = isEnabled(e.id)
       return el('button', {
@@ -329,12 +330,31 @@
         'aria-pressed': on ? 'true' : 'false',
         title: on ? `停用「${e.name}」` : `启用「${e.name}」`,
         onclick: () => save({ enabled: { ...(options.enabled || {}), [e.id]: !on } }, on ? `已停用「${e.name}」` : `已启用「${e.name}」`),
-      }, on ? '✓ ' : '', e.name)
+      },
+        el('span', { class: 'pick-mark', 'aria-hidden': 'true' }),
+        el('span', { class: 'pick-name', text: e.name }),
+        el('span', { class: 'pick-size', text: `${e.chars || 0}` }),
+      )
     }
+
+    const onCount = all.filter((e) => isEnabled(e.id)).length
+    // 分组只在真的有「我的」时才显示：只有内置时还分两栏，等于白占一行。
+    const groups = [
+      mine.length ? { label: '内置', rows: builtin } : null,
+      mine.length ? { label: '我的来源', rows: mine } : null,
+      mine.length ? null : { label: '', rows: all },
+    ].filter(Boolean)
+
     return el('section', { class: 'picker', 'aria-label': '启用专家' },
-      el('h3', {}, '启用的专家',
-        el('span', { class: 'h2-sub', text: '点一下即生效，不必逐条打开' })),
-      el('div', { class: 'picks' }, ...all.map(chip)),
+      el('h3', {},
+        el('span', { text: '启用的专家' }),
+        el('span', { class: 'picker-count', text: `${onCount} / ${all.length}` }),
+        el('span', { class: 'h2-sub', text: '点一下即生效' }),
+      ),
+      ...groups.map((g) => el('div', { class: 'pick-group' },
+        g.label ? el('span', { class: 'pick-group-label', text: g.label }) : null,
+        el('div', { class: 'picks' }, ...g.rows.map(chip)),
+      )),
     )
   }
 
@@ -636,12 +656,30 @@
   }
 
   /**
+   * currentPlan 是「现在这套设置会让网关怎么做」。
+   *
+   * 优先本地算：后端只在有请求经过时才重扫写快照，不动 agent 的话快照永远旧，
+   * 技能开关、装配面板、状态条就全都停在改之前的样子。
+   * 只有 useAgentPurge 打开时才不得不用快照——state.json 只有后端读得到。
+   */
+  function currentPlan() {
+    if (options.useAgentPurge === true) return catalog?.plan || null
+    const api = globalThis.PurgePlan
+    if (!api) return catalog?.plan || null
+    const usable = [...entries(), ...inlineEntries().map(shaped)]
+      .filter((e) => e.status === 'ok' && e.injectable && typeof e.text === 'string' && e.text.trim())
+    return api.resolve({ options, entries: usable })
+  }
+
+  /**
    * renderPlan 是「现在到底注不注、注谁、为什么没注」那一行。
-   * 判定由后端算好放在快照的 plan 里（页面不能读磁盘）。
+   *
+   * 判定用 currentPlan()：本地算，所以改完设置立刻反映，不用等后端重扫。
+   * 快照里的 plan 只在 useAgentPurge 打开时才用得上（state.json 只有后端读得到）。
    */
   function renderPlan() {
     const host = $('plan')
-    const plan = catalog?.plan
+    const plan = currentPlan()
     if (!plan) {
       host.dataset.state = 'idle'
       host.replaceChildren(
@@ -651,9 +689,8 @@
       return
     }
     const ready = Boolean(plan.ready)
-    // plan 是后端上一次扫描算出来的；本地刚改过设置时它就过期了。
-    // 状态条左边说「已选 append」、右边却还在劝「用 replace 开始注入」，
-    // 就是因为胶囊读本地、按钮读快照。这里先认出来，过期就别再按旧的劝。
+    // 判定已经是本地的了，正常情况下不会过期；留这条只在 useAgentPurge 模式下生效，
+    // 那种模式页面算不了，只能拿快照，仍可能出现「刚改完还没重扫」的短暂不一致。
     const stale = planStale(plan)
     // personaFrom 的三种来源，用户一眼要能看懂「谁在顶着」：
     //   page = 自己点的、auto = 底座人设自动顶上、default = agent-purge（仅在显式开启时）
