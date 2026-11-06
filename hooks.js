@@ -58,7 +58,7 @@ export function pick(catalog, options = {}, state = null, agent = '') {
   const byId = new Map()
   for (const e of resolved) if (!byId.has(e.id)) byId.set(e.id, e)
 
-  // 三层优先级（页面 > agent-purge state.json > 默认）都在 plan.resolve 里判定
+  // 选人逻辑只有一处：页面设置优先，上游 state.json 仅在 useAgentPurge 打开时参与
   const plan = resolvePlan({ options, state, entries: resolved, agent })
   const persona = plan.personaId ? byId.get(plan.personaId) ?? null : null
   const skills = plan.skills.map((s) => byId.get(s.id)).filter(Boolean)

@@ -55,32 +55,39 @@ test('不可注入的条目不会被选成人设', () => {
   assert.match(picked.plan.blocked, /还没有人设/)
 })
 
-test('没有模式（页面没选、agent-purge 也没有）时不注入，并说明原因', () => {
+test('没有模式（页面没选）时不注入，并说明原因', () => {
   const picked = pick(catalog, {})
   assert.equal(picked.text, '')
   assert.equal(picked.plan.mode, 'off')
   assert.match(picked.plan.blocked, /模式是 off/)
 })
 
-test('页面没选模式时跟随 agent-purge 的 state', () => {
+test('没打开 useAgentPurge 时上游的 state 不参与判定', () => {
   const state = { bound: true, mode: 'strict', persona: 'anima', disabled: [], overrides: {}, error: '' }
   const picked = pick(catalog, {}, state, 'claude')
+  assert.equal(picked.plan.mode, 'off')
+  assert.equal(picked.text, '')
+})
+
+test('打开 useAgentPurge 后才跟随上游的 state', () => {
+  const state = { bound: true, mode: 'strict', persona: 'anima', disabled: [], overrides: {}, error: '' }
+  const picked = pick(catalog, { useAgentPurge: true }, state, 'claude')
   assert.equal(picked.plan.mode, 'strict')
   assert.equal(picked.plan.modeFrom, 'agent-purge')
   assert.equal(picked.plan.personaFrom, 'agent-purge')
   assert.equal(picked.text, '新版人设')
 })
 
-test('页面显式选过模式时盖住 agent-purge', () => {
+test('页面显式选过模式时盖住上游', () => {
   const state = { bound: true, mode: 'strict', persona: 'anima', disabled: [], overrides: {}, error: '' }
-  const picked = pick(catalog, { mode: 'append' }, state, 'claude')
+  const picked = pick(catalog, { mode: 'append', useAgentPurge: true }, state, 'claude')
   assert.equal(picked.plan.mode, 'append')
   assert.equal(picked.plan.modeFrom, 'page')
 })
 
-test('agent-purge 关掉这个 harness 时整个不注入', () => {
+test('上游关掉这个 harness 时整个不注入', () => {
   const state = { bound: true, mode: 'replace', persona: 'anima', disabled: ['claude'], overrides: {}, error: '' }
-  const picked = pick(catalog, { mode: 'append' }, state, 'claude')
+  const picked = pick(catalog, { mode: 'append', useAgentPurge: true }, state, 'claude')
   assert.equal(picked.text, '')
   assert.match(picked.plan.blocked, /关掉了这个 harness/)
 })

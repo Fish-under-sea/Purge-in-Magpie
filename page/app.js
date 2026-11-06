@@ -46,6 +46,8 @@
   let saveTimer = 0
   let pendingSave = null
   let busy = false
+  /** showingText 是「查看原文」的展开态；换条目时要收回去，否则新条目一进来就是展开的。 */
+  let showingText = false
   /** confirmedSig 记「用户按下确认时的那套配置」；配置一变就失效，退回「确认注入」。 */
   let confirmedSig = ''
   /** modeMenuOpen 是模式下拉面板是否展开；每次重画都要记住，否则点一下就收。 */
@@ -200,7 +202,13 @@
       class: 'row',
       role: 'option',
       'aria-selected': selected === e.id,
-      onclick: () => { selected = selected === e.id ? '' : e.id; render() },
+      onclick: () => {
+        const next = selected === e.id ? '' : e.id
+        // 换条目就收起原文：从一条展开着的详情跳到另一条，不该自动展示别人的正文。
+        if (next !== selected) showingText = false
+        selected = next
+        render()
+      },
     },
       el('span', { class: 'spine', style: `--spine:var(--kind-${kindClass(e.kind)})` }),
       el('span', {},
@@ -312,6 +320,7 @@
     const e = findEntry(selected)
     if (!e) {
       // 没选中时让位给「组装预览」：右栏不留一片空白，那是最浪费的一屏。
+      showingText = false
       host.replaceChildren()
       return
     }
@@ -323,7 +332,10 @@
     const enabled = isEnabled(e.id)
     const pinned = options.pinned?.[e.id]
     const history = Array.isArray(e.history) ? e.history : []
-    const text = inline ? String(e.text || '') : ''
+    // 可注入条目的正文现在随快照下来（inventory.snapshotOf 带 text），
+    // 所以「看原文」对内置技能也成立，不再只限页面里贴进来的那几条。
+    const text = typeof e.text === 'string' ? e.text : ''
+    const canShowText = Boolean(text.trim())
 
     const actions = []
     // 人设才有「设为当前人设」；技能是「启用/停用」。混着写会让人以为技能能当人设用。
@@ -339,6 +351,15 @@
         type: 'button',
         onclick: () => save({ enabled: { ...(options.enabled || {}), [e.id]: !enabled } }, enabled ? `已停用「${e.name}」` : `已启用「${e.name}」`),
       }, enabled ? '停用' : '启用'))
+    }
+    // 「它到底写了什么」是判断要不要启用它的唯一依据：进来就看得到，不用去磁盘翻文件。
+    if (canShowText) {
+      actions.push(el('button', {
+        type: 'button',
+        class: showingText ? 'quiet' : '',
+        'aria-expanded': showingText ? 'true' : 'false',
+        onclick: () => { showingText = !showingText; renderInspector() },
+      }, showingText ? '收起原文' : '查看原文'))
     }
     if (pinned) {
       actions.push(el('button', {
@@ -435,8 +456,9 @@
               el('h3', { text: '下一步' }),
               el('p', { text: '把它当资料翻；要注入的话，从「导入与来源」里选一份 .md 人设或技能。' }),
             ),
+          // 「出处」比「提炼自」中性：技能是从 dsh-purge 提炼的，人设是新写的，一个前缀套不住两种。
           e.builtin && e.meta?.source
-            ? el('p', { class: 'ins-origin', text: `提炼自 ${e.meta.source}` })
+            ? el('p', { class: 'ins-origin', text: `出处：${e.meta.source}` })
             : null,
         ),
         el('aside', { class: 'ins-facts' },
@@ -453,7 +475,10 @@
         : null,
       versionPicker,
       pinned ? el('p', { class: 'note', text: `当前固定到 ${short(pinned)}：网关用那一版的正文，不是最新的。` }) : null,
-      inline && text ? el('pre', { class: 'text', text: text.slice(0, 3200) + (text.length > 3200 ? '\n…' : '') }) : null,
+      // 原文按注入形态显示：前面出现的技能段，正文会以「## 技能：<名字>」为界拼进去。
+      showingText && canShowText
+        ? el('pre', { class: 'text', text: text.length > 8000 ? `${text.slice(0, 8000)}\n…（共 ${text.length.toLocaleString('zh-CN')} 字符，后面省略）` : text })
+        : null,
     ].filter(Boolean))
   }
 
@@ -517,16 +542,13 @@
     renderSources()
   }
 
-  /** MODES 是模式下拉的全部取值：空串 = 跟随 agent-purge。 */
-  const MODES = () => ['', 'off', 'strict', 'replace', 'append']
+  /** MODES 是模式下拉的全部取值：没有「跟随上游」这一档，模式必须自己选。 */
+  const MODES = () => ['off', 'strict', 'replace', 'append']
 
-  /** modeHelp 说清当前值到底意味着什么，尤其是「跟随 agent-purge」时用的是它的什么值。 */
+  /** modeHelp 说清当前值到底意味着什么；未选时说清未选就是不动请求。 */
   function modeHelp(value) {
     if (value) return MODE_HELP[value] || ''
-    const p = catalog?.purge
-    if (!p?.bound) return '没装 agent-purge 或读不到它的 state.json：等价于 off，不会改请求。'
-    if (p.error) return `agent-purge 的 state.json 有问题：${p.error}；等价于 off。`
-    return `跟随 agent-purge：当前 ${p.mode || '未设置'}${p.persona ? ` · 人设 ${p.persona}` : ''}`
+    return '还没选模式：请求原样放行。选一个（比如 replace）才开始注入。'
   }
 
   /**
@@ -545,7 +567,9 @@
       return
     }
     const ready = Boolean(plan.ready)
-    const fromText = { page: '本页设置', 'agent-purge': 'agent-purge', auto: '自动（第一个启用的人设）', default: '默认' }
+    // personaFrom 的三种来源，用户一眼要能看懂「谁在顶着」：
+    //   page = 自己点的、auto = 底座人设自动顶上、default = agent-purge（仅在显式开启时）
+    const fromText = { page: '本页设置', auto: '底座人设（没选人设时自动顶上）', default: '默认' }
     host.dataset.state = ready ? 'ready' : 'blocked'
 
     // 没就绪时给一个能点的下一步：光说「不会注入」等于把问题丢回给人。
@@ -584,8 +608,8 @@
           ? `下一次 agent 请求会注入「${plan.personaName || plan.personaId}」`
           : '现在不会注入：请求原样放行'),
         el('span', { class: 'why', text: ready
-          ? `人设来源：${fromText[plan.personaFrom] || plan.personaFrom}${catalog?.purge?.bound ? '；agent-purge 的 state.json 已读到' : '；没读到 agent-purge 的 state.json'}`
-          : `${plan.blocked}${catalog?.purge?.bound ? '' : '（没读到 agent-purge 的 state.json）'}` }),
+          ? `人设来源：${fromText[plan.personaFrom] || plan.personaFrom}`
+          : plan.blocked }),
       ),
       el('span', { class: 'plan-controls' },
         modePill(),
@@ -608,7 +632,8 @@
    */
   function modePill() {
     const value = MODES().includes(options.mode) ? options.mode : ''
-    const label = value === '' ? '跟随 agent-purge' : `${value} · ${MODE_SHORT[value] || ''}`
+    // 未选模式时不假装跟随谁：直接说「未选」，点开才去挑。
+    const label = value === '' ? '未选' : `${value} · ${MODE_SHORT[value] || ''}`
     return el('button', {
       type: 'button',
       class: 'seg seg-mode',
@@ -643,7 +668,7 @@
     const value = MODES().includes(options.mode) ? options.mode : ''
     const pick = (m) => {
       modeMenuOpen = false
-      save({ mode: m }, m ? `模式改为 ${m}` : '改为跟随 agent-purge')
+      save({ mode: m }, `模式改为 ${m}`)
     }
     const move = (delta) => {
       const opts = [...document.querySelectorAll('.seg-opt')]
@@ -671,8 +696,8 @@
         onclick: () => pick(m),
       },
         el('span', { class: 'seg-opt-body' },
-          el('span', { class: 'seg-opt-name', text: m === '' ? '跟随 agent-purge' : m }),
-          el('span', { class: 'seg-opt-sub', text: m === '' ? '用 agent-purge 的 state.json 里的 mode' : MODE_HELP[m] }),
+          el('span', { class: 'seg-opt-name', text: m }),
+          el('span', { class: 'seg-opt-sub', text: MODE_HELP[m] }),
         ),
         m === value
           ? el('svg', { class: 'seg-check', viewBox: '0 0 12 12', 'aria-hidden': 'true' },

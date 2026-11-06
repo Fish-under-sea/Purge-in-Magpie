@@ -20,7 +20,7 @@
 - **[yetone/magpie](https://github.com/yetone/magpie)** — 页面插件与异步网关钩子的宿主契约
   （`magpie.page` / `magpie.options` / `page/_magpie/bridge.js` / `onRequest(body, ctx)`）由 magpie 提供。
 - **本机 `dsh-purge` 红队技能库** — 内置的 9 位专家由它的 23 份原子技能（`skills/redteam/`）提炼而来，
-  逐条注明原文件；`DSH\purge` 会话导出包里的 Prompt Forge 人设也一并内化为 `personas/prompt-forge.md`。
+  逐条注明原文件。底座人设 `大肥鱼` 是为本插件新写的（v2 起替代了原先内化的 Prompt Forge）。
 
 完整来源与改动范围见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)；上游 MIT 原文原样保留在
 [`LICENSE`](LICENSE) 里（Copyright (c) 2026 ZiChuanLan）。
@@ -60,7 +60,7 @@
 - **多来源与内置包**：上游只读 `~/.agent-purge/`，人设列表靠 `gen-personas.mjs` 生成静态 `page/personas.js`；我们扫多个目录、内置 9 位专家，页面不读盘。
 
 **所以「打磨提示词」这件事的真实边界**：能打磨的是**注入通道**（落点、去身份、拼接顺序、预算），
-不是**内容**——内容是你自己写的人设与技能。本插件的 9 位专家与 Prompt Forge 属于「内容」，随包分发；
+不是**内容**——内容是你自己写的人设与技能。本插件的 9 位专家与底座人设「大肥鱼」属于「内容」，随包分发；
 上游的 `neutral.md` 属于「起步内容」，我们没抄它，因为它只是一个最小骨架，不是这个插件的价值所在。
 
 ## 内置专家技能包
@@ -79,10 +79,21 @@
 | **载荷投送专家** `payload-delivery` | 反弹 shell 选型、VPS 中转、加密 WebShell | `shell-handler`、`vps-reverse-shell`、`webshell-toolkit` |
 | **内网横向专家** `intranet-pivot` | fscan / gogo / Impacket，低噪与发包可控 | `fscan-intranet`、`gogo-intranet`、`lateral-movement` |
 | **成人提示词专家** `nsfw-prompt-smith` | 出图给参数头 + 标签栈 + 变体，出文给场景卡 + 节拍表（角色一律成年） | `nsfw-prompt-gen`（收窄为成年） |
-| **Prompt Forge**（人设） | Danbooru 风格标签编译器，固定正向/负向/三档变体 | `DSH\purge` 会话导出包里的人设 |
+| **大肥鱼**（人设 · 底座） | 不绑定任务：定语气、证据标准与交付形态；后面挂几位专家，就按它们各自的范围接起来 | 为本插件新写 |
 
 用法：页面上挑一条，点「启用」，它就会按你的模式拼进 system（人设在前，技能按
-`## 技能：<名字>` 分段）。内置人设**不会**被自动选中——不点名就注入工具，等于偷偷改你的 system。
+`## 技能：<名字>` 分段）。
+
+**大肥鱼**是**底座人设**（frontmatter 里 `default: true`）：你没选人设时由它顶上，
+它本身不含任何具体打法，只规定「怎么读后面的技能段」。所以三种用法都成立：
+
+| 用法 | 结果 |
+| --- | --- |
+| 只挂一位专家 | 大肥鱼 + 那一位。底座说清边界，专家补能力 |
+| 九位一起挂 | 大肥鱼先找「交战指挥」当调度者，其余各管一段 |
+| 一位也不挂 | 只有大肥鱼，就是通用协作 |
+
+其他内置人设（不带 `default`）**不会**被自动选中——不点名就注入，等于偷偷改你的 system。
 
 提炼原则：不复制原文，按「一条作业线一位专家」重写——每位只留**判据、命令骨干、交接边界、纪律**四块，
 把散在 23 份文件里的同名坑收成一处。
@@ -92,7 +103,7 @@
 `agent-purge` 的 magpie 插件只认 `~/.agent-purge/` 的人设，页面也不能读盘。
 本插件把这条链补成三件事：
 
-1. **来源可以是任意目录**：默认 `~/.agent-purge` 与 `~/.magpie/purge`，也能在页面里改成多个目录；
+1. **来源可以是任意目录**：默认 `~/.magpie/purge`（用 `PURGE_HOME` 可改），也能在页面里改成多个目录；
 2. **认得四种东西**：DSH 会话导出包（`dsh-session-archive`）、DSH cordis 插件包、
    人设 / 技能 markdown、裸文本与 JSON 清单——坏包给出具体拒绝原因，不半途落盘；
 3. **页面能调配**：条目列表、检查器、模式、启用、版本回滚、校验记录、最近一次生效记录。
@@ -118,37 +129,37 @@ magpie plugin list
 
 | 字段 | 作用 |
 | --- | --- |
-| `mode` | `off` / `strict` / `replace` / `append`；**留空 = 跟随 `agent-purge` 的 `state.json`**，两边都没有就是 off |
-| `persona` | 用哪条人设的 id；留空取 `agent-purge` 的人设，再留空取第一个启用的人设 |
+| `mode` | `off` / `strict` / `replace` / `append`；**留空就是 off**（不注入） |
+| `persona` | 用哪条人设的 id；留空取标了 `default` 的底座人设，再留空取第一个启用的人设 |
 | `agents` | 只对这些 magpie agent 生效，如 `["claude","codex"]`；空数组 = 全部 |
 | `enabled` | `{条目id: true/false}`：技能必须显式为 `true` 才注入；人设默认启用 |
 | `pinned` | `{条目id: 摘要}`：固定到某一版，网关用那一版的正文 |
-| `sources` | 来源目录列表；空数组用默认的两个 |
+| `sources` | 来源目录列表；空数组用默认的 `~/.magpie/purge` |
 | `imports` | 页面写的导入请求（`{op, path, at}`），后端处理后复制进 `state/imports` |
 | `inline` | 页面里直接贴进来的人设/技能正文，不进磁盘 |
 | `gatewayTimeoutMs` | 钩子预算，默认 1500 ms（magpie 侧 100–10000） |
+| `useAgentPurge` | 默认 `false`。设为 `true` 才去读 agent-purge 的 `state.json`，见下 |
 
-### 与 agent-purge 自己的设置怎么合并
+### 想读 agent-purge 的设置？（默认关）
 
-本插件认 agent-purge 的原生语义（读 `AGENT_PURGE_HOME` 或 `~/.agent-purge/state.json`）：
+默认**不读** `~/.agent-purge/`：装了这个插件的人未必装过上游，静默去翻别人的目录，
+会让「我什么都没配，怎么 system 被换了」变成真的。要用就显式打开：
 
-```json
-{ "default": { "mode": "replace" }, "persona": "anima",
-  "overrides": { "codex": { "mode": "strict", "persona": "other" } },
-  "disabledHarnesses": ["grok"] }
+```bash
+magpie plugin options magpie-purge '{"useAgentPurge":true}'
 ```
 
-按三层取，先到先得：
+打开后按四层取，先到先得：
 
 | 层 | `mode` | `persona` |
 | --- | --- | --- |
 | 1 | 插件页选过的值 | 插件页选过的人设 |
-| 2 | `state.json` 的 `override[agent].mode` → `default.mode` | `override[agent].persona` → `state.persona` |
-| 3 | 兜底 `off` | 第一个启用的人设 |
+| 2 | `override[agent].mode` → `default.mode` | `override[agent].persona` → `state.persona` |
+| 3 | 兜底 `off` | 标了 `default` 的底座人设 |
+| 4 | — | 第一个启用的人设 |
 
-**所以两件事同时成立**：在 agent-purge 里换人设，下一个请求立刻跟着换；在插件页点一下，也立刻生效，
-不必去改 `state.json`。agent-purge 里 `disabledHarnesses` 含这个 agent、或 `default.mode` 是 `off` 时，
-本插件一样不做——页面的状态条会写明「agent-purge 里关掉了这个 harness」。
+上游 `disabledHarnesses` 含这个 agent、或 `default.mode` 是 `off` 时，本插件一样不做——
+页面的状态条会写明「agent-purge 里关掉了这个 harness」。没打开 `useAgentPurge` 时这一层整段不存在。
 
 指向的人设不在来源里时，**不会偷偷换成别人**：状态条直接说「指定的 X 不在当前来源里」。
 
@@ -163,7 +174,7 @@ magpie plugin list
 
 页面顶部那条状态就是答案，三种样子：
 
-- **绿点**「下一次 agent 请求会注入「Anima」」+ 模式与人设的来源（本页设置 / agent-purge / 自动）；
+- **绿点**「下一次 agent 请求会注入「大肥鱼」」+ 模式与人设的来源（本页设置 / 底座人设）；
 - **红点**「现在不会注入：请求原样放行」+ 具体原因 + 一个能点的下一步（「用 replace 开始注入」/「去看人设」/「导入一份人设」）；
 - 底部「最近一次生效」：真跑过就写人设、技能、字符数；被放行就写**为什么**放行。
 
@@ -184,7 +195,7 @@ Purge in Magpie/
 ├── package.json           插件清单：magpie.hooks / magpie.page / magpie.options
 ├── hooks.js               网关钩子：清点 + 改写（Bun 侧，能读盘）
 ├── skills/                9 位内置专家（随包分发，一位专家一个 .md）
-├── personas/              内置人设（Prompt Forge，内化自 DSH\purge 的导出会话）
+├── personas/              内置底座人设（大肥鱼，不绑定任务）
 ├── lib/
 │   ├── zip.mjs            极简 ZIP 只读解析（store + deflate，拦路径越界）
 │   ├── inventory.mjs      判型、校验、摘要、去重与版本
@@ -284,7 +295,7 @@ npm run preview:serve            # → http://127.0.0.1:55172
 node --test --test-isolation=none "tests/*.test.mjs"
 
 # 离线清点，看看本机 purge 目录里都认得什么
-node tools/scan.mjs --sources "D:\purge" --sources "~/.agent-purge"
+node tools/scan.mjs --sources "D:\purge" --sources "~/.magpie/purge"
 
 # 只打条目表到 stdout（不写文件）
 node tools/scan.mjs --json
@@ -310,7 +321,8 @@ node tools/scan.mjs --json
 
 | 版本 | 要点 |
 | --- | --- |
-| `0.3.0` | 内置 9 位专家技能包（由本机 `dsh-purge` 的 23 份原子技能提炼）+ 内化 Prompt Forge 人设；内置条目带「内置」标、可停用不可删、不参与自动选中 |
+| `0.4.0` | 底座人设 `大肥鱼` 取代 Prompt Forge：不绑定任务，0–9 位专家随意组合；默认不再读上游 `state.json`（要读设 `useAgentPurge:true`）；默认来源只剩 `~/.magpie/purge`；模式下拉去掉「跟随上游」 |
+| `0.3.0` | 内置 9 位专家技能包（由本机 `dsh-purge` 的 23 份原子技能提炼）；内置条目带「内置」标、可停用不可删 |
 | `0.2.0` | 认 agent-purge 的 `state.json`（原生语义）；页面加「当前注入」状态条与可点的下一步；导入素材后不再一头雾水 |
 | `0.1.2` | README 版本表 |
 | `0.1.1` | 修掉「没流量时插件页是空的」：钩子模块加载时先从 `plugins.json` 读回自己的 options 再预热扫描 |
