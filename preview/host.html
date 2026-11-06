@@ -38,8 +38,9 @@
   // 把预览用的开关一起转给业务页：unsent=1 抹掉「最近一次生效」，
   // 好看「确认注入」还没按下的那副样子。
   const pass = new URLSearchParams({ theme })
-  if (new URLSearchParams(location.search).get('unsent') === '1') pass.set('unsent', '1')
-  if (new URLSearchParams(location.search).get('menu') === '1') pass.set('menu', '1')
+  for (const flag of ['unsent', 'menu', 'inline']) {
+    if (new URLSearchParams(location.search).get(flag) === '1') pass.set(flag, '1')
+  }
   frame.src = `/page/index.html?${pass}`
   document.getElementById('mode').textContent = `预览：mock 宿主 · ${theme === 'light' ? '浅色' : '深色'}`
   // 默认不选任何条目：右栏默认就是「注入组装」，那是最该看的一屏。

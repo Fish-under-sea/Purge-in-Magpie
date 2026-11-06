@@ -96,7 +96,35 @@
 
   const entries = () => (Array.isArray(catalog?.entries) ? catalog.entries : [])
   const inlineEntries = () => (Array.isArray(options.inline) ? options.inline : [])
-  const findEntry = (id) => entries().find((e) => e.id === id) || inlineEntries().find((e) => e.id === id) || null
+
+  /**
+   * shaped 给「页面导入」的条目补齐其它条目都有的字段。
+   *
+   * 列表与检查器必须看同一份形状：之前只有列表补了，检查器拿到的是裸对象，
+   * 于是 source 缺失 → 认不出是 inline → 不给删除按钮、还把它当素材。
+   */
+  const shaped = (e) => ({
+    ...e,
+    status: 'ok',
+    reason: '',
+    source: { rel: '页面导入（options）', root: 'inline' },
+    size: 0,
+    meta: { format: 'inline', description: '从「导入」里挑进来的文件，正文存在插件的 options 里。' },
+    version: e.version ?? 1,
+    importedAt: 0,
+    chars: String(e.text || '').length,
+    injectable: true,
+    builtin: false,
+    digest: e.digest || '',
+  })
+
+  // findEntry 统一走 shaped：检查器与列表必须看到同一份对象，否则判定会打架。
+  const findEntry = (id) =>
+    entries().find((e) => e.id === id) ||
+    (() => {
+      const hit = inlineEntries().find((e) => e.id === id)
+      return hit ? shaped(hit) : null
+    })()
   const isEnabled = (id) => (options.enabled?.[id] !== undefined ? options.enabled[id] : findEntry(id)?.kind === 'persona')
   /** defaultPersona 是「现在最能顶上的人设」：内置底座优先，其次第一个可用的人设。 */
   const defaultPersona = () =>
@@ -165,17 +193,7 @@
         inlineEntries()
           .filter((e) => (filter ? e.kind === filter : true))
           .filter((e) => (q ? `${e.name} ${e.id}`.toLowerCase().includes(q) : true))
-          .map((e) => ({
-            ...e,
-            status: 'ok',
-            source: { rel: '页面导入（options）', root: 'inline' },
-            size: 0,
-            meta: { format: 'inline', description: '' },
-            version: 1,
-            chars: String(e.text || '').length,
-            injectable: true,
-            digest: '',
-          })),
+          .map(shaped),
       )
   }
 
@@ -187,7 +205,7 @@
       return
     }
     if (!rows.length) {
-      host.replaceChildren(el('p', { class: 'empty', text: '没有匹配的条目。清掉搜索，或往来源目录里放点东西再扫一次。' }))
+      host.replaceChildren(el('p', { class: 'empty', text: '没有匹配的条目。清掉搜索，或导入一份文件再来。' }))
       return
     }
     // 分组比逐行挂「内置」胶囊干净：内置是「这一整组都随包来」，说一次就够。
@@ -544,8 +562,8 @@
       const n = entries().length
       host.replaceChildren(el('li', {
         text: n
-          ? '没有拒绝项：来源目录里每个文件都认得出来。'
-          : '还没有扫描结果。先确认来源目录里放了东西，再点右上角「重新扫描」。',
+          ? '没有拒绝项：现在这些文件都认得出来。'
+          : '还没有扫描结果：导入一份文件，或点一下「导入」区里的按钮触发重扫。',
       }))
       return
     }
@@ -604,8 +622,22 @@
   }
 
   /**
+   * planStale 判断「快照里的判定」是否已经跟不上本地设置了。
+   *
+   * 只比这两件会直接改变结论的事：模式与生效的人设。比完就知道该不该按旧结论劝人。
+   */
+  function planStale(plan) {
+    if (!plan) return false
+    const localMode = MODES().includes(options.mode) ? options.mode : ''
+    if (localMode && localMode !== plan.mode) return true
+    const localPersona = typeof options.persona === 'string' ? options.persona.trim() : ''
+    if (localPersona && localPersona !== plan.personaId) return true
+    return false
+  }
+
+  /**
    * renderPlan 是「现在到底注不注、注谁、为什么没注」那一行。
-   * 判定由后端算好放在快照的 plan 里（页面不能读 agent-purge 的 state.json）。
+   * 判定由后端算好放在快照的 plan 里（页面不能读磁盘）。
    */
   function renderPlan() {
     const host = $('plan')
@@ -619,6 +651,10 @@
       return
     }
     const ready = Boolean(plan.ready)
+    // plan 是后端上一次扫描算出来的；本地刚改过设置时它就过期了。
+    // 状态条左边说「已选 append」、右边却还在劝「用 replace 开始注入」，
+    // 就是因为胶囊读本地、按钮读快照。这里先认出来，过期就别再按旧的劝。
+    const stale = planStale(plan)
     // personaFrom 的三种来源，用户一眼要能看懂「谁在顶着」：
     //   page = 自己点的、auto = 底座人设自动顶上、default = agent-purge（仅在显式开启时）
     const fromText = { page: '本页设置', auto: '底座人设（没选人设时自动顶上）', default: '默认' }
@@ -631,10 +667,13 @@
       save({ ...patch, refreshAt: Date.now() }, note)
       pollSnapshot('等后端按新设置重扫…', 25)
     }
+    // 本地已经选好模式时，绝不再劝「用 replace 开始注入」——
+    // 那正是图一里「写着 append、旁边却叫你换成 replace」的自相矛盾。
+    const localMode = MODES().includes(options.mode) ? options.mode : ''
+    if (!ready && !localMode) {
+      fix.push(el('button', { type: 'button', class: 'primary', onclick: () => fixed({ mode: 'replace' }, '模式改为 replace') }, '用 replace 开始注入'))
+    }
     if (!ready) {
-      if (plan.blockedCode === 'no-mode' || plan.blockedCode === 'mode-off') {
-        fix.push(el('button', { type: 'button', class: 'primary', onclick: () => fixed({ mode: 'replace' }, '模式改为 replace') }, '用 replace 开始注入'))
-      }
       // 旧人设被删掉后 options.persona 会一直指着它，卡在 persona-missing：
       // 这个问题点「去看人设」永远绕不出来，得给一个直接改掉它的动作。
       if (plan.blockedCode === 'persona-missing' && defaultPersona()) {
@@ -645,13 +684,13 @@
           onclick: () => fixed({ persona: next.id }, `人设改为「${next.name}」`),
         }, `改用「${next.name}」`))
       }
-      if (plan.blockedCode === 'no-persona' || plan.blockedCode === 'persona-missing') {
+      if (!stale && (plan.blockedCode === 'no-persona' || plan.blockedCode === 'persona-missing')) {
         fix.push(el('button', {
           type: 'button',
           onclick: () => { filter = 'persona'; query = ''; render() },
         }, '去看人设'))
       }
-      if (plan.blockedCode === 'no-persona-file') {
+      if (!stale && plan.blockedCode === 'no-persona-file') {
         fix.push(el('button', {
           type: 'button',
           class: 'primary',
@@ -662,15 +701,23 @@
 
     // 两行文字放进同一列：第一行是结论，第二行是依据；右边的胶囊组跨两行垂直居中。
     // 原来「为什么」那行缩进 20px，看起来像挂件；现在两行左对齐，读起来是一段话。
+    // 过期时不复述旧结论：直接说「等重扫」，免得左边写 append、右边说「还没选模式」。
+    const who = stale
+      ? '设置已改，等后端重扫确认'
+      : ready
+        ? `下一次 agent 请求会注入「${plan.personaName || plan.personaId}」`
+        : '现在不会注入：请求原样放行'
+    const why = stale
+      ? '刚改完模式或人设：下一次请求按新设置走，这里显示的是上一次扫描的判定'
+      : ready
+        ? `人设来源：${fromText[plan.personaFrom] || plan.personaFrom}`
+        : plan.blocked
+
     const rows = [
       el('span', { class: 'dot' }),
       el('span', { class: 'plan-text' },
-        el('span', { class: ready ? 'who' : 'who is-empty' }, ready
-          ? `下一次 agent 请求会注入「${plan.personaName || plan.personaId}」`
-          : '现在不会注入：请求原样放行'),
-        el('span', { class: 'why', text: ready
-          ? `人设来源：${fromText[plan.personaFrom] || plan.personaFrom}`
-          : plan.blocked }),
+        el('span', { class: ready && !stale ? 'who' : 'who is-empty' }, who),
+        el('span', { class: 'why', text: why }),
       ),
       el('span', { class: 'plan-controls' },
         modePill(),
@@ -778,9 +825,13 @@
    * 签名一变，「已注入」自动退回「确认注入」。
    */
   function confirmButton(plan) {
-    const sig = `${plan.mode}|${plan.personaId || ''}`
+    // 签名用「实际会生效的那一套」：刚改了模式但后端还没重扫时，plan 是旧的，
+    // 拿它算签名会让按钮继续显示「已注入」——那等于替一套还没生效的配置背书。
+    const mode = MODES().includes(options.mode) ? options.mode : plan.mode
+    const persona = (typeof options.persona === 'string' && options.persona.trim()) || plan.personaId || ''
+    const sig = `${mode}|${persona}`
     const last = catalog?.last
-    const evidence = Boolean(last && !last.skipped && last.mode === plan.mode && (last.persona || '') === (plan.personaId || ''))
+    const evidence = Boolean(last && !last.skipped && last.mode === mode && (last.persona || '') === persona)
     const applied = evidence || confirmedSig === sig
     return el('button', {
       type: 'button',
@@ -826,7 +877,7 @@
           return
         }
         if (Date.now() < until) setTimeout(tick, 1200)
-        else say('后端还没写出新快照：magpie 里插件可能没重启，或来源目录没权限。', 'bad')
+        else say('后端还没写出新快照：magpie 里插件可能没重启，或它写不进自己的 state 目录。', 'bad')
       }
       script.onerror = () => {
         script.remove()

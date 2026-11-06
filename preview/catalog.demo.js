@@ -162,3 +162,12 @@ window.PURGE_CATALOG = {
 if (new URLSearchParams(location.search).get('unsent') === '1') {
   window.PURGE_CATALOG.last = null
 }
+
+// 预览开关：?inline=1 造一条「页面导入」的条目，用来看那条路径的检查器
+// （它有「删除导入」「改判」两个按钮，不导入就看不到）。
+if (new URLSearchParams(location.search).get('inline') === '1') {
+  window.PURGE_CATALOG.options = {
+    ...window.PURGE_CATALOG.options,
+    inline: [{ id: 'mine', name: '我的技能', kind: 'skill', text: '这是从页面导入的正文。\n\n## 用法\n\n点一下就来。\n' }],
+  }
+}
