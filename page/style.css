@@ -162,9 +162,17 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 
 .list { display: grid; gap: 1px; border-top: 1px solid var(--line); }
 /* 桌面端列表自己滚：条目多时不让整页跟着长，右栏也不会剩一大片空白。
-   窄屏不做嵌套滚动——那比页面滚动难用。 */
+   窄屏不做嵌套滚动——那比页面滚动难用。
+   底部加一层淡出：滚动区硬切会把最后一行切成半截，看起来像坏了。 */
 @media (min-width: 901px) {
-  .list { max-height: min(58vh, 540px); overflow-y: auto; overscroll-behavior: contain; }
+  .list {
+    max-height: min(58vh, 540px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: 4px;
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
+  }
+  .list:has(> .row:last-child:first-child) { mask-image: none; }
 }
 .group-head {
   display: flex;
@@ -217,14 +225,15 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-/* 只在「未启用 / 已启用 / 拒绝」三种状态给胶囊；「内置」靠分组标题说，不逐行重复 */
+/* 状态胶囊跟名字同行：放右侧会把行高撑到 70px，十条就多出一屏 */
 .row .badge {
   display: inline-block;
+  vertical-align: 1px;
   font-size: 12px;
-  padding: 1px 8px;
+  padding: 0 7px;
+  margin-left: 8px;
   border-radius: 999px;
   border: 1px solid currentColor;
-  margin-left: 6px;
 }
 .badge.reject { color: var(--danger); }
 .badge.off { color: var(--muted); }
@@ -287,6 +296,34 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   color: var(--muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+/* 一键启用：把九个专家的开关摊平，点一下即生效 */
+.picker { margin-top: 28px; }
+.picker h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 560;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.picks { display: flex; flex-wrap: wrap; gap: 8px; }
+.pick {
+  font-size: 12.5px;
+  padding: 4px 12px;
+  min-height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+}
+.pick:hover:not(:disabled) { color: var(--ink); }
+.pick.is-on {
+  background: color-mix(in oklab, var(--kind-skill) 14%, transparent);
+  border-color: color-mix(in oklab, var(--kind-skill) 45%, var(--line));
+  color: var(--ink);
 }
 
 /* 详情 */

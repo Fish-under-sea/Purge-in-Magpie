@@ -188,10 +188,10 @@
     },
       el('span', { class: 'spine', style: `--spine:var(--kind-${kindClass(e.kind)})` }),
       el('span', {},
-        el('span', { class: 'title', text: e.name }),
+        el('span', { class: 'title' }, e.name, badge || null),
         el('span', { class: 'meta', text: `${kind.label} · ${e.builtin ? '随插件' : e.source?.rel ?? ''}` }),
       ),
-      el('span', { class: 'side' }, e.version > 1 ? `v${e.version}` : '', badge || '',
+      el('span', { class: 'side' }, e.version > 1 ? `v${e.version} ` : '',
         el('span', { class: 'meta', text: e.injectable ? `${e.chars || 0} 字` : fmtSize(e.size || 0) })),
     )
   }
@@ -248,7 +248,35 @@
         el('span', { text: plan.ready ? `合计 ${total.toLocaleString('zh-CN')} 字符 · 预算 65,536` : `模式 ${plan.mode}` }),
         last?.at ? el('span', { text: last.skipped ? `上次 ${fmtTime(last.at)} · 未注入` : `上次 ${fmtTime(last.at)} · ${last.agent || '—'}` }) : null,
       ),
+      renderExpertPicker(),
     ].filter(Boolean))
+  }
+
+  /**
+   * renderExpertPicker 是「一键启用专家」：这里是每天重复最多的动作。
+   * 不用逐条点开再点启用——九个专家的开关摊在同一行，点一下就切。
+   * 只列技能：人设是「谁来写」，走另一条路（详情里的「设为当前人设」）。
+   */
+  function renderExpertPicker() {
+    const skills = entries().filter((e) => e.injectable && e.kind === 'skill' && e.builtin)
+    const mine = entries().filter((e) => e.injectable && e.kind === 'skill' && !e.builtin)
+    const all = [...skills, ...mine]
+    if (!all.length) return null
+    const chip = (e) => {
+      const on = isEnabled(e.id)
+      return el('button', {
+        type: 'button',
+        class: `pick${on ? ' is-on' : ''}`,
+        'aria-pressed': on ? 'true' : 'false',
+        title: on ? `停用「${e.name}」` : `启用「${e.name}」`,
+        onclick: () => save({ enabled: { ...(options.enabled || {}), [e.id]: !on } }, on ? `已停用「${e.name}」` : `已启用「${e.name}」`),
+      }, on ? '✓ ' : '', e.name)
+    }
+    return el('section', { class: 'picker', 'aria-label': '启用专家' },
+      el('h3', {}, '启用的专家',
+        el('span', { class: 'h2-sub', text: '点一下即生效，不必逐条打开' })),
+      el('div', { class: 'picks' }, ...all.map(chip)),
+    )
   }
 
   /** stackRow 是组装里的一层：序号 + 名字 + 一句描述 + 体积。 */
