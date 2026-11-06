@@ -49,5 +49,22 @@
       } catch { /* 跨域就当没有 */ }
     }, 400)
   })
+
+  // 热重载（serve.mjs --watch）：改了 page/ 里的文件，重设 frame.src 拉一份新的，
+  // 不用手点刷新。用 src 重设而不是 contentWindow.location.reload()，跨帧更稳。
+  if (new URLSearchParams(location.search).get('watch') !== '0') {
+    try {
+      const es = new EventSource('/_reload')
+      es.onmessage = () => {
+        const u = new URL(frame.src, location.href)
+        u.searchParams.set('t', Date.now())
+        frame.src = u.toString()
+        document.getElementById('mode').textContent = '预览：已重载'
+        setTimeout(() => {
+          document.getElementById('mode').textContent = `预览：mock 宿主 · ${theme === 'light' ? '浅色' : '深色'}`
+        }, 900)
+      }
+    } catch { /* 没开 watching 就静默 */ }
+  }
 </script>
 </html>

@@ -6,8 +6,10 @@
 //   node preview/serve.mjs                 → http://127.0.0.1:55133
 //   node preview/serve.mjs --demo          → 用 preview/catalog.demo.js 顶替真实快照
 //   node preview/serve.mjs --demo=blocked  → 只有素材、没选模式那一屏
+//   node preview/serve.mjs --demo --watch  → 改完 page/ 自动重载（调 UI 时开这个）
 //
 // 真机里 page/catalog.js 由 hooks.js 扫描后写出；预览里要么用它，要么用演示快照。
+import { watch } from 'node:fs'
 import http from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
@@ -17,6 +19,7 @@ const here = fileURLToPath(new URL('.', import.meta.url))
 const root = normalize(join(here, '..'))
 const demoArg = process.argv.find((a) => a === '--demo' || a.startsWith('--demo='))
 const demoFile = demoArg ? (demoArg.includes('=') ? `catalog.${demoArg.split('=')[1]}.js` : 'catalog.demo.js') : ''
+const watchMode = process.argv.includes('--watch')
 const port = Number(process.env.PREVIEW_PORT || 55133)
 
 const mime = {
@@ -29,6 +32,31 @@ const mime = {
   '.json': 'application/json; charset=utf-8',
 }
 
+// 监听页面的客户端。--watch 时把它们挂在 /_reload 上，文件一动就推一条消息。
+const listeners = new Set()
+function broadcast() {
+  for (const res of listeners) {
+    try {
+      res.write('data: reload\n\n')
+    } catch {
+      listeners.delete(res)
+    }
+  }
+}
+
+if (watchMode) {
+  let timer = 0
+  for (const dir of ['page', 'preview']) {
+    watch(join(root, dir), { recursive: true }, (_event, file) => {
+      // 只认真正会被浏览器读的文件；catalog.js 由构建脚本写，不算改动。
+      if (!file || !/\.(html|css|js|mjs|svg|png)$/.test(file)) return
+      if (file.endsWith('catalog.js')) return
+      clearTimeout(timer)
+      timer = setTimeout(broadcast, 80)
+    })
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1')
   const pathname = decodeURIComponent(url.pathname)
@@ -36,6 +64,20 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(code, { 'content-type': type, 'cache-control': 'no-store' })
     res.end(body)
   }
+
+  // 热重载通道：保持连接，文件一变就推一条；客户端断了就从集合里摘掉。
+  if (pathname === '/_reload') {
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-store',
+      connection: 'keep-alive',
+    })
+    res.write(': connected\n\n')
+    listeners.add(res)
+    req.on('close', () => listeners.delete(res))
+    return
+  }
+
   try {
     if (pathname === '/' || pathname === '/host.html') {
       return send(await readFile(join(here, 'host.html'), 'utf8'), mime['.html'])
@@ -56,5 +98,9 @@ const server = http.createServer(async (req, res) => {
 })
 
 server.listen(port, '127.0.0.1', () => {
-  console.log(`purge preview: http://127.0.0.1:${port}  （?theme=light 切浅色${demoFile ? `，演示快照 ${demoFile}` : ''}）`)
+  const bits = [`http://127.0.0.1:${port}`]
+  if (demoFile) bits.push(`?theme=light 切浅色；演示快照 ${demoFile}`)
+  else bits.push('?theme=light 切浅色')
+  console.log(`purge preview: ${bits.join('\n               ')}`)
+  if (watchMode) console.log('               已开热重载：改 page/ 会自动刷新（?watch=0 可关）')
 })

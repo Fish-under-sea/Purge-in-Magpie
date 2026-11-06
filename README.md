@@ -199,17 +199,29 @@ node tools/build-preview.mjs      # → preview/purge-preview.html
 
 例：`preview/purge-preview.html#theme=light&snap=blocked`
 
-**② 起服务，看真实文件**（改完 `page/` 后自查用这个）：
+**② 起服务，改完自动刷新**（调 UI/UX 时用这个）：
 
 ```bash
-node preview/serve.mjs --demo     # http://127.0.0.1:55133
+npm run preview:serve            # → http://127.0.0.1:55172
 ```
 
 用 mock 宿主把真实的 `page/index.html` 放进一个帧里，主题跟随 magpie 的变量名：
 `?theme=dark`（默认）/ `?theme=light`。
-默认**不预选任何条目**——右栏默认显示「注入组装」，那是最该看的一屏；
-要检查详情用 `?row=0` 指定第几条（0 起）。
+
+改完 `page/` 里的文件**会自动重载**——服务监听这些文件，通过 `/_reload` 推一条消息给页面，
+帧自己换 src。不用手点刷新，也不用手动重建。嫌它太勤？加 `?watch=0` 关掉。
+
+| 参数 | 作用 |
+| --- | --- |
+| `?theme=dark` / `?theme=light` | 深色 / 浅色 |
+| `?row=0` | 预选第几条，直接看检查器（0 起） |
+| `?watch=0` | 关掉热重载 |
+
+默认**不预选任何条目**——右栏默认显示「注入组装」，那是最该看的一屏。
 不带 `--demo` 时读的是真机生成的 `page/catalog.js`；`--demo=blocked` 是「什么都没就绪」那一屏。
+
+> 热重载靠一条常开的 SSE 连接。用无头浏览器截图时会一直等不到网络空闲，
+> 截图命令记得带 `?watch=0`。
 
 单文件是**派生文件**：改完 `page/` 要重新跑一次 `build-preview`，别手改它。
 `npm run prepack` 会顺手重建，所以发布包里那份总是最新的。
