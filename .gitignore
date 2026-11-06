@@ -1,0 +1,12 @@
+# 本机产物，不进库
+state/
+page/catalog.js
+page/personas.js
+*.tgz
+.work/
+node_modules/
+
+# 编辑器/系统
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,471 @@
+// 破甲 · Purge 的页面逻辑。
+//
+// 页面在 magpie 的沙箱帧里：不能 fetch、读不到磁盘，只有三样东西可用——
+//   1. window.PURGE_CATALOG：后端扫描后写下的快照（page/catalog.js）；
+//   2. magpie.options.get/set：这个插件在 plugins.json 里的设置；
+//   3. magpie.ready / onVisibility：主题与可见性。
+// 所以页面只做「显示 + 改设置」，真正的清点与改写都在 hooks.js 那一侧。
+;(() => {
+  'use strict'
+
+  const bridge = window.magpie
+  const $ = (id) => document.getElementById(id)
+  const KINDS = {
+    'session-archive': { label: '会话导出包', color: 'var(--kind-session)' },
+    'cordis-plugin': { label: 'DSH 插件包', color: 'var(--kind-plugin)' },
+    persona: { label: '人设', color: 'var(--kind-persona)' },
+    skill: { label: '技能', color: 'var(--kind-skill)' },
+    manifest: { label: '清单', color: 'var(--kind-manifest)' },
+    text: { label: '文本', color: 'var(--kind-text)' },
+  }
+  const MODE_HELP = {
+    off: '请求原样放行，什么也不改。',
+    strict: '整段可控 system 换成人设；原 system 里的工具说明文本也会一起没了。',
+    replace: '人设放最前，宿主 system 里「自称 + 点名模型/厂商」的行删掉。',
+    append: '人设放最前，宿主 system 原样保留。',
+  }
+
+  let options = {}
+  let catalog = window.PURGE_CATALOG ?? null
+  let selected = ''
+  let filter = ''
+  let query = ''
+  let saveTimer = 0
+  let pendingSave = null
+  let busy = false
+
+  // ---------- 小工具 ----------
+
+  const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MiB` : `${Math.max(1, Math.round(n / 1024))} KiB`)
+  const fmtTime = (ms) => (ms ? new Date(ms).toLocaleString('zh-CN', { hour12: false }) : '—')
+  const short = (digest) => (digest ? String(digest).slice(0, 12) : '—')
+
+  function say(text, tone = '') {
+    const el = $('status')
+    el.textContent = text
+    el.dataset.tone = tone
+    el.hidden = !text
+    if (!text) return
+    clearTimeout(say.timer)
+    say.timer = setTimeout(() => { el.hidden = true }, 6000)
+  }
+
+  function el(tag, attrs = {}, ...kids) {
+    const node = document.createElement(tag)
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v === null || v === undefined || v === false) continue
+      if (k === 'class') node.className = v
+      else if (k === 'text') node.textContent = v
+      else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v)
+      else node.setAttribute(k, v === true ? '' : String(v))
+    }
+    for (const kid of kids.flat()) {
+      if (kid === null || kid === undefined || kid === false) continue
+      node.append(kid instanceof Node ? kid : document.createTextNode(String(kid)))
+    }
+    return node
+  }
+
+  const entries = () => (Array.isArray(catalog?.entries) ? catalog.entries : [])
+  const inlineEntries = () => (Array.isArray(options.inline) ? options.inline : [])
+  const findEntry = (id) => entries().find((e) => e.id === id) || inlineEntries().find((e) => e.id === id) || null
+  const isEnabled = (id) => (options.enabled?.[id] !== undefined ? options.enabled[id] : findEntry(id)?.kind === 'persona')
+
+  // ---------- 与宿主说话 ----------
+
+  /** save 把整份 options 写回magpie；options.set 每秒只收一次，这里攒 1.1 秒再发。 */
+  function save(patch, note) {
+    options = { ...options, ...patch }
+    if (pendingSave) Object.assign(pendingSave, patch)
+    else pendingSave = { ...patch }
+    clearTimeout(saveTimer)
+    saveTimer = setTimeout(flush, 1100)
+    if (note) say(note)
+    render()
+  }
+
+  async function flush() {
+    if (!pendingSave || !bridge?.options?.set) return
+    const body = { ...options }
+    pendingSave = null
+    try {
+      const saved = await bridge.options.set(body)
+      if (saved && typeof saved === 'object') options = { ...body, ...saved }
+    } catch (error) {
+      say(`保存失败：${error?.message || error}`, 'bad')
+    }
+  }
+
+  // ---------- 渲染 ----------
+
+  function renderFilters() {
+    const host = $('filters')
+    const kinds = [...new Set(entries().map((e) => e.kind))]
+    host.replaceChildren(
+      el('button', { type: 'button', class: 'chip', 'aria-pressed': filter === '', onclick: () => { filter = ''; render() } }, `全部 ${entries().length}`),
+      ...kinds.map((kind) => {
+        const n = entries().filter((e) => e.kind === kind).length
+        return el('button', {
+          type: 'button',
+          class: 'chip',
+          'aria-pressed': filter === kind,
+          onclick: () => { filter = filter === kind ? '' : kind; render() },
+        }, `${KINDS[kind]?.label || kind} ${n}`)
+      }),
+    )
+  }
+
+  function visible() {
+    const q = query.trim().toLowerCase()
+    return entries()
+      .filter((e) => (filter ? e.kind === filter : true))
+      .filter((e) => (q ? `${e.name} ${e.id} ${e.source?.rel ?? ''} ${KINDS[e.kind]?.label ?? ''}`.toLowerCase().includes(q) : true))
+      .concat(
+        inlineEntries()
+          .filter((e) => (filter ? e.kind === filter : true))
+          .filter((e) => (q ? `${e.name} ${e.id}`.toLowerCase().includes(q) : true))
+          .map((e) => ({
+            ...e,
+            status: 'ok',
+            source: { rel: '页面导入（options）', root: 'inline' },
+            size: 0,
+            meta: { format: 'inline', description: '' },
+            version: 1,
+            chars: String(e.text || '').length,
+            injectable: true,
+            digest: '',
+          })),
+      )
+  }
+
+  function renderList() {
+    const host = $('list')
+    const rows = visible()
+    if (!catalog) {
+      host.replaceChildren(el('p', { class: 'empty', text: '还没有快照：后端没跑过扫描。点右上角「重新扫描」。' }))
+      return
+    }
+    if (!rows.length) {
+      host.replaceChildren(el('p', { class: 'empty', text: '没有匹配的条目。清掉搜索，或往来源目录里放点东西再扫一次。' }))
+      return
+    }
+    host.replaceChildren(...rows.map((e) => {
+      const kind = KINDS[e.kind] || { label: e.kind, color: 'var(--line)' }
+      const badge = e.status === 'rejected'
+        ? el('span', { class: 'badge reject', text: '拒绝' })
+        : !e.injectable ? null
+          : isEnabled(e.id) ? null : el('span', { class: 'badge off', text: '未启用' })
+      return el('button', {
+        type: 'button',
+        class: 'row',
+        role: 'option',
+        'aria-selected': selected === e.id,
+        onclick: () => { selected = e.id; render() },
+      },
+        el('span', { class: 'spine', style: `--spine:${kind.color}` }),
+        el('span', {},
+          el('span', { class: 'title', text: e.name }),
+          el('span', { class: 'meta', text: `${kind.label} · ${e.source?.rel ?? ''}` }),
+        ),
+        el('span', { class: 'side' }, e.version > 1 ? `v${e.version}` : '', badge || '',
+          el('span', { class: 'meta', text: e.injectable ? `${e.chars || 0} 字` : fmtSize(e.size || 0) })),
+      )
+    }))
+  }
+
+  function renderInspector() {
+    const host = $('inspect')
+    const e = findEntry(selected)
+    if (!e) {
+      host.replaceChildren(el('p', { class: 'empty', text: '左边选一个条目：这里显示它是什么、从哪来、能不能注入，以及上一版在哪。' }))
+      return
+    }
+    const kind = KINDS[e.kind] || { label: e.kind, color: 'var(--line)' }
+    const inline = e.source?.root === 'inline' || e.meta?.format === 'inline'
+    // 只有复制进插件自己的 state/imports 的副本才谈得上「删副本」：来源目录里的原件不动。
+    const imported = Boolean(e.source?.root && /[\\/]state[\\/]imports\/?$/.test(e.source.root))
+    const enabled = isEnabled(e.id)
+    const pinned = options.pinned?.[e.id]
+    const history = Array.isArray(e.history) ? e.history : []
+    const text = inline ? String(e.text || '') : ''
+
+    const actions = []
+    if (e.injectable) {
+      actions.push(el('button', {
+        type: 'button',
+        class: options.persona === e.id ? 'primary' : '',
+        onclick: () => save({ persona: e.id }, `已把「${e.name}」设为当前人设`),
+      }, options.persona === e.id ? '当前人设' : '设为当前人设'))
+      actions.push(el('button', {
+        type: 'button',
+        onclick: () => save({ enabled: { ...(options.enabled || {}), [e.id]: !enabled } }, enabled ? `已停用「${e.name}」` : `已启用「${e.name}」`),
+      }, enabled ? '停用' : '启用'))
+    }
+    if (pinned) {
+      actions.push(el('button', {
+        type: 'button',
+        class: 'ghost',
+        onclick: () => {
+          const next = { ...(options.pinned || {}) }
+          delete next[e.id]
+          save({ pinned: next }, '已回到最新版本')
+        },
+      }, '取消版本固定'))
+    }
+    if (inline) {
+      actions.push(el('button', {
+        type: 'button',
+        class: 'danger',
+        onclick: () => {
+          const kept = inlineEntries().filter((x) => x.id !== e.id)
+          const enabledNext = { ...(options.enabled || {}) }
+          delete enabledNext[e.id]
+          save({ inline: kept, enabled: enabledNext, persona: options.persona === e.id ? '' : options.persona }, '已从页面导入里删掉')
+          if (selected === e.id) selected = ''
+        },
+      }, '删除'))
+    } else if (imported) {
+      actions.push(el('button', {
+        type: 'button',
+        class: 'danger',
+        onclick: () => importRequest({ op: 'delete', path: e.source.rel }, `已请求删除「${e.name}」的副本（只删插件自己的 state/imports）`),
+      }, '删除副本'))
+    }
+
+    const versionPicker = history.length
+      ? el('label', { class: 'note' },
+        '回滚到：',
+        el('select', {
+          onchange: (ev) => {
+            const digest = ev.target.value
+            const next = { ...(options.pinned || {}) }
+            if (digest) next[e.id] = digest
+            else delete next[e.id]
+            save({ pinned: next }, digest ? '已固定到旧版本' : '已回到最新版本')
+          },
+        },
+          el('option', { value: '', selected: !pinned }, `最新 v${e.version ?? 1}`),
+          ...history.map((h) => el('option', { value: h.digest, selected: pinned === h.digest }, `v${h.version ?? '?'} · ${fmtTime(h.at)}`)),
+        ),
+      )
+      : null
+
+    // replaceChildren 会把 null 变成 "null" 字符串，所以先过滤。
+    host.replaceChildren(...[
+      el('div', { class: 'head' },
+        el('div', {},
+          el('h2', { text: e.name }),
+          el('p', { class: 'note', text: e.meta?.description || (e.injectable ? '可写进 system 段的人设/技能文本。' : '素材条目：可查、可归档，不参与改写。') }),
+        ),
+        el('span', { class: 'kind', style: `color:${kind.color}` }, kind.label),
+      ),
+      el('dl', { class: 'facts' },
+        el('dt', { text: '来源' }), el('dd', { text: e.source?.root === 'inline' ? '页面导入（存在 options 里）' : e.source?.root || '—' }),
+        el('dt', { text: '路径' }), el('dd', {}, el('code', { text: e.source?.rel || '—' })),
+        el('dt', { text: '大小' }), el('dd', { text: e.injectable ? `${e.chars || 0} 字符（上限 64 KB）` : fmtSize(e.size || 0) }),
+        el('dt', { text: '摘要' }), el('dd', {}, el('code', { text: short(e.digest) })),
+        el('dt', { text: '版本' }), el('dd', { text: `v${e.version ?? 1}${history.length ? ` · 保留 ${history.length} 个旧版` : ''}` }),
+        el('dt', { text: '导入于' }), el('dd', { text: fmtTime(e.importedAt) }),
+        e.meta?.sessions !== undefined ? el('dt', { text: '会话数' }) : null,
+        e.meta?.sessions !== undefined ? el('dd', { text: String(e.meta.sessions) }) : null,
+        e.meta?.turns !== undefined ? el('dt', { text: '选定轮次' }) : null,
+        e.meta?.turns !== undefined ? el('dd', { text: String(e.meta.turns) }) : null,
+      ),
+      e.injectable
+        ? el('div', { class: 'budget' },
+          el('div', { class: 'track' }, el('div', { class: 'fill', style: `width:${Math.min(100, Math.round((e.chars || 0) / 65536 * 100))}%` })),
+          el('div', { class: 'label', text: `${(e.chars || 0).toLocaleString('zh-CN')} / 65,536 字符会进入 system` }),
+        )
+        : null,
+      el('div', { class: 'actions' }, ...actions),
+      versionPicker,
+      pinned ? el('p', { class: 'note', text: `当前固定到 ${short(pinned)}：网关用那一版的正文，不是最新的。` }) : null,
+      inline && text ? el('pre', { class: 'text', text: text.slice(0, 3200) + (text.length > 3200 ? '\n…' : '') }) : null,
+    ].filter(Boolean))
+  }
+
+  function renderRejects() {
+    const host = $('rejects')
+    const rows = Array.isArray(catalog?.rejected) ? catalog.rejected : []
+    if (!rows.length) {
+      const n = entries().length
+      host.replaceChildren(el('li', {
+        text: n
+          ? '没有拒绝项：来源目录里每个文件都认得出来。'
+          : '还没有扫描结果。先确认来源目录里放了东西，再点右上角「重新扫描」。',
+      }))
+      return
+    }
+    host.replaceChildren(...rows.slice(0, 24).map((r) => el('li', {}, el('strong', { text: r.name }), `：${r.reason}`)))
+  }
+
+  function renderLast() {
+    const host = $('last')
+    const last = catalog?.last
+    if (!last) {
+      host.replaceChildren(el('p', { class: 'note', text: '还没有请求经过网关时用到人设。改完模式后，下一次 agent 请求会写下这一行。' }))
+      return
+    }
+    host.replaceChildren(
+      el('p', { class: 'note', text: `${fmtTime(last.at)} · ${last.agent || '未知 agent'} · ${last.protocol} · ${last.mode}` }),
+      el('p', { class: 'note', text: `人设 ${last.persona || '（无）'} · 技能 ${(last.skills || []).length} 条 · 注入 ${last.chars} 字符` }),
+      ...(last.missingPin?.length ? [el('p', { class: 'warn', text: `固定的版本不在当前表里：${last.missingPin.join('、')}` })] : []),
+    )
+  }
+
+  function render() {
+    if (!catalog) {
+      $('count').textContent = '没有快照'
+    } else {
+      const shown = visible().length
+      $('count').textContent = `${shown} / ${entries().length + inlineEntries().length} 条 · 快照 v${catalog.version} · ${fmtTime(catalog.generatedAt)}`
+    }
+    $('mode').value = MODES().includes(options.mode) ? options.mode : 'off'
+    $('mode-help').textContent = MODE_HELP[$('mode').value] || ''
+    renderFilters()
+    renderList()
+    renderInspector()
+    renderRejects()
+    renderLast()
+    renderSources()
+  }
+
+  const MODES = () => ['off', 'strict', 'replace', 'append']
+
+  function renderSources() {
+    const el2 = $('sources')
+    if (!el2 || document.activeElement === el2) return
+    const list = Array.isArray(options.sources) && options.sources.length
+      ? options.sources
+      : (catalog?.sources || []).filter((s) => s.path && !/[\\/]state[\\/]imports\/?$/.test(s.path)).map((s) => s.path)
+    el2.value = list.join('\n')
+  }
+
+  // ---------- 动作 ----------
+
+  function importRequest(req, note) {
+    const imports = Array.isArray(options.imports) ? options.imports.slice(-19) : []
+    imports.push({ ...req, at: Date.now() })
+    save({ imports, refreshAt: Date.now() }, note)
+    pollSnapshot(`等待后端处理：${req.path}`, 25)
+  }
+
+  /** pollSnapshot 每隔 1.2 秒重新加载 catalog.js（加时间戳绕缓存），版本变了就重画。 */
+  function pollSnapshot(reason, seconds = 12) {
+    const before = catalog?.version ?? 0
+    const until = Date.now() + seconds * 1000
+    say(reason)
+    const tick = () => {
+      const script = document.createElement('script')
+      script.src = `catalog.js?t=${Date.now()}`
+      script.onload = () => {
+        script.remove()
+        const next = window.PURGE_CATALOG
+        if (next && next.version !== before) {
+          catalog = next
+          render()
+          say('快照已更新', 'good')
+          return
+        }
+        if (Date.now() < until) setTimeout(tick, 1200)
+        else say('后端还没写出新快照：magpie 里插件可能没重启，或来源目录没权限。', 'bad')
+      }
+      script.onerror = () => {
+        script.remove()
+        if (Date.now() < until) setTimeout(tick, 1200)
+      }
+      document.head.append(script)
+    }
+    setTimeout(tick, 900)
+  }
+
+  async function refresh() {
+    if (busy) return
+    busy = true
+    $('refresh').disabled = true
+    try {
+      save({ refreshAt: Date.now() })
+      await flush()
+      pollSnapshot('正在让后端重新扫描…', 25)
+    } finally {
+      busy = false
+      $('refresh').disabled = false
+    }
+  }
+
+  function wire() {
+    $('mode').addEventListener('change', (e) => save({ mode: e.target.value }, `模式改为 ${e.target.value}`))
+    $('refresh').addEventListener('click', refresh)
+    $('q').addEventListener('input', (e) => { query = e.target.value; render() })
+
+    $('import-run').addEventListener('click', () => {
+      const path = $('import-path').value.trim()
+      if (!path) return say('先填一个文件路径', 'bad')
+      importRequest({ op: 'import', path }, '已请求导入')
+      $('import-path').value = ''
+    })
+
+    $('import-file').addEventListener('change', async (e) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+      try {
+        const raw = await file.text()
+        if (raw.length > 64 * 1024) throw new Error('超过 64 KB：这么大的正文不该塞进 options')
+        const id = (file.name.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9._-]+/g, '-') || 'inline').slice(0, 48)
+        const kept = inlineEntries().filter((x) => x.id !== id)
+        const body = raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim()
+        const fm = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+        const name = fm?.[1]?.match(/^name:\s*(.+)$/m)?.[1]?.replace(/^["']|["']$/g, '') || file.name.replace(/\.[^.]+$/, '')
+        save({ inline: [...kept, { id, name, kind: 'persona', text: body }] }, `已把「${name}」存进 options`)
+        e.target.value = ''
+      } catch (error) {
+        say(`导入失败：${error?.message || error}`, 'bad')
+      }
+    })
+
+    const sources = $('sources-save')
+    sources?.addEventListener('click', () => {
+      const list = $('sources').value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+      save({ sources: list, refreshAt: Date.now() }, '来源目录已保存')
+      pollSnapshot('等待后端按新来源扫描…', 25)
+    })
+  }
+
+  async function boot() {
+    if (bridge?.ready?.then) {
+      try {
+        await Promise.race([bridge.ready, new Promise((r) => setTimeout(r, 1500))])
+      } catch {
+        /* 宿主没答也要能画 */
+      }
+    }
+    if (bridge?.onVisibility) bridge.onVisibility((visible) => { if (visible && !busy) refreshFromDisk() })
+    try {
+      options = (await bridge?.options?.get?.()) || {}
+    } catch (error) {
+      say(`读不到 options：${error?.message || error}`, 'bad')
+      options = {}
+    }
+    wire()
+    render()
+    if (!catalog) pollSnapshot('还没有快照，等后端第一次扫描…', 20)
+  }
+
+  /** 页面被切回来时顺手换一份快照：宿主可能在背后扫过一次。 */
+  function refreshFromDisk() {
+    const script = document.createElement('script')
+    script.src = `catalog.js?t=${Date.now()}`
+    script.onload = () => {
+      script.remove()
+      const next = window.PURGE_CATALOG
+      if (next && next.version !== catalog?.version) {
+        catalog = next
+        render()
+      }
+    }
+    script.onerror = () => script.remove()
+    document.head.append(script)
+  }
+
+  boot()
+})()

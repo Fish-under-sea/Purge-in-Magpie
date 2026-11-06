@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>破甲 · Purge</title>
+<script src="_magpie/bridge.js"></script>
+<script src="catalog.js"></script>
+<link rel="stylesheet" href="style.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">
+    <img class="mark" src="icon.svg" alt="" width="24" height="24">
+    <div>
+      <h1>破甲 · Purge</h1>
+      <p class="sub">本地 purge 目录 → 网关 system 改写</p>
+    </div>
+  </div>
+  <div class="controls">
+    <span class="mode-label" id="mode-label">改写模式</span>
+    <div class="mode-row">
+      <select id="mode" aria-labelledby="mode-label">
+        <option value="off">off · 不动请求</option>
+        <option value="strict">strict · 只留人设</option>
+        <option value="replace">replace · 人设 + 去掉自称</option>
+        <option value="append">append · 人设 + 原样保留</option>
+      </select>
+      <button id="refresh" type="button">重新扫描</button>
+    </div>
+    <span class="hint" id="mode-help"></span>
+  </div>
+</header>
+
+<p class="boundary" id="boundary">
+  只处理经过 magpie 网关的 agent 请求；客户端自己写死的行为、不经过网关的流量改不到。
+  strict 会连原 system 里的工具说明文本一起换掉，结构化工具定义不在网关这一层。
+  页面不读磁盘：条目由插件后端扫描后写成快照，页面只显示它。
+</p>
+
+<div class="grid">
+  <section aria-label="条目列表">
+    <div class="rail-head">
+      <input id="q" type="search" placeholder="搜名字、来源或类型" aria-label="搜索条目" autocomplete="off">
+      <div id="filters" class="chips" role="group" aria-label="按类型筛选"></div>
+      <p class="count" id="count">正在读快照…</p>
+    </div>
+    <div id="list" class="list" role="listbox" aria-label="条目"></div>
+  </section>
+
+  <section class="inspect" id="inspect" aria-label="条目详情" aria-live="polite"></section>
+</div>
+
+<section class="foot">
+  <div>
+    <h2>导入</h2>
+    <div class="stack">
+      <div class="row2">
+        <input id="import-path" type="text" placeholder="粘贴文件路径：人设、技能、ZIP 导出包" aria-label="要导入的文件路径" spellcheck="false">
+        <button id="import-run" type="button">导入</button>
+      </div>
+      <p class="note">后端只认 .md / .markdown / .txt / .json / .zip，复制进插件的 <code>state/imports</code> 后再清点；原文件不动。</p>
+      <div class="row2">
+        <input id="import-file" type="file" accept=".md,.markdown,.txt" aria-label="从本机选一个人设或技能文件">
+      </div>
+      <p class="note">选文件时正文直接存进插件的 options（<code>inline</code>），不复制、不落盘。</p>
+      <label class="note" for="sources">来源目录（一行一个）</label>
+      <textarea id="sources" rows="3" spellcheck="false" aria-label="来源目录，一行一个" placeholder="D:\purge&#10;~/.agent-purge"></textarea>
+      <div class="row2">
+        <button id="sources-save" type="button">保存来源并重扫</button>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <h2>校验记录</h2>
+    <ul id="rejects"></ul>
+  </div>
+
+  <div>
+    <h2>最近一次生效</h2>
+    <div id="last" class="stack"></div>
+  </div>
+</section>
+
+<p id="status" class="status" role="status" aria-live="polite" hidden></p>
+
+</body>
+</html>

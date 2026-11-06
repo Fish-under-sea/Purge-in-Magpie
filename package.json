@@ -1,0 +1,69 @@
+{
+  "name": "@fish-under-sea/magpie-purge",
+  "version": "0.1.0",
+  "description": "Purge in Magpie: a magpie page plugin that treats a local purge folder as a free plugin/skill source, inspects and validates what is in it, and rewrites the gateway's system prompt by mode (off / strict / replace / append).",
+  "type": "module",
+  "license": "MIT",
+  "files": [
+    "hooks.js",
+    "lib",
+    "page",
+    "tools",
+    "preview",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "keywords": [
+    "magpie",
+    "magpie-plugin",
+    "magpie-page",
+    "purge",
+    "agent-purge",
+    "system-prompt",
+    "gateway-hook"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fish-under-sea/Purge-in-Magpie.git"
+  },
+  "homepage": "https://github.com/Fish-under-sea/Purge-in-Magpie#readme",
+  "bugs": {
+    "url": "https://github.com/Fish-under-sea/Purge-in-Magpie/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "scan": "node tools/scan.mjs",
+    "test": "node --test --test-isolation=none \"tests/*.test.mjs\"",
+    "preview": "node preview/serve.mjs --demo",
+    "prepack": "node tools/prepack.mjs"
+  },
+  "magpie": {
+    "hooks": "./hooks.js",
+    "icon": "page/icon.png",
+    "page": {
+      "title": "Purge in Magpie",
+      "titles": {
+        "zh": "破甲 · Purge",
+        "zh-TW": "破甲 · Purge",
+        "ja": "Purge",
+        "de": "Purge"
+      },
+      "file": "page/index.html",
+      "icon": "page/icon.svg"
+    },
+    "options": {
+      "sources": [],
+      "mode": "off",
+      "persona": "",
+      "agents": [],
+      "enabled": {},
+      "pinned": {},
+      "imports": [],
+      "refreshAt": 0,
+      "gatewayTimeoutMs": 1500
+    }
+  }
+}
