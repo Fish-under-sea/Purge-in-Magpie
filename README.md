@@ -101,7 +101,7 @@ node preview/serve.mjs --demo     # http://127.0.0.1:55133
 ## 开发
 
 ```bash
-# 测试（33 个用例：判型/校验/改写/选人/快照/钩子端到端）
+# 测试（36 个用例：判型/校验/改写/选人/快照/钩子端到端/options 回读）
 node --test --test-isolation=none "tests/*.test.mjs"
 
 # 离线清点，看看本机 purge 目录里都认得什么
