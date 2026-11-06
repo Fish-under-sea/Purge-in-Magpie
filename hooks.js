@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { MODES, compose, rewrite, supported } from './lib/rewrite.mjs'
-import { loadCatalog, paths, sync } from './lib/state.mjs'
+import { loadCatalog, ownOptions, paths, sync } from './lib/state.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -110,8 +110,9 @@ export function createHook(root = here, { deadlineMs = 400, rescanMs = 30_000, w
     return job
   }
 
-  /** warm 在模块加载时就起：页面第一次打开、或第一个请求到达时，表通常已经在了。 */
-  const warm = warmUp ? scanOnce({}) : Promise.resolve(null)
+  /** warm 在模块加载时就起：读回自己的 options（页面要能无流量也显示条目），再扫一遍。 */
+  const own = ownOptions(root)
+  const warm = warmUp ? scanOnce(own || {}) : Promise.resolve(null)
 
   /** ensureCatalog 拿条目表，最多等 deadlineMs；等不到就返回 null，让这次请求放行。 */
   async function ensureCatalog(options) {
