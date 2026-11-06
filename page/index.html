@@ -13,28 +13,10 @@
 
 <header class="top">
   <div class="brand">
-    <img class="mark" src="icon.svg" alt="" width="28" height="28">
-    <div class="brand-text">
+    <img class="mark" src="card.png" alt="" width="28" height="28">    <div class="brand-text">
       <h1>破甲 <span class="brand-tail">Purge</span></h1>
       <p class="tagline">本地 purge 目录 → 网关 system 改写</p>
     </div>
-  </div>
-
-  <div class="top-controls">
-    <div class="controls-row">
-      <label class="field">
-        <span class="field-label" id="mode-label">改写模式</span>
-        <select id="mode" aria-labelledby="mode-label">
-          <option value="">跟随 agent-purge</option>
-          <option value="off">off · 不动请求</option>
-          <option value="strict">strict · 只留人设</option>
-          <option value="replace">replace · 人设 + 去掉自称</option>
-          <option value="append">append · 人设 + 原样保留</option>
-        </select>
-      </label>
-      <button id="refresh" type="button" class="quiet">重新扫描</button>
-    </div>
-    <p class="top-hint" id="mode-help"></p>
   </div>
 </header>
 

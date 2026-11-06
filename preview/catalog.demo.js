@@ -151,3 +151,9 @@ window.PURGE_CATALOG = {
     catalogVersion: 12,
   },
 }
+
+// 预览开关：?unsent=1 把「最近一次生效」抹掉，好看到「确认注入」尚未按下的样子。
+// 不加这个参数时，演示快照里 last 与 plan 对得上，按钮直接是「已注入」。
+if (new URLSearchParams(location.search).get('unsent') === '1') {
+  window.PURGE_CATALOG.last = null
+}

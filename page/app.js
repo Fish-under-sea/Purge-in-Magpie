@@ -28,10 +28,15 @@
     replace: '人设放最前，宿主 system 里「自称 + 点名模型/厂商」的行删掉。',
     append: '人设放最前，宿主 system 原样保留。',
   }
-  /** NOT_INJECTABLE 说清「这条为什么不会进 system」，并指出下一步：导入的是素材，不是人设。 */
-  const NOT_INJECTABLE =
-    '素材条目：可查、可归档，不会写进 system。要注入请导入人设或技能（.md / .markdown / .txt），' +
-    '或在下方「从本机选文件」里挑一个 md。'
+  /** MODE_SHORT 是下拉里模式名后面那一截：只够一格，别写成整句。 */
+  const MODE_SHORT = {
+    off: '不动请求',
+    strict: '只留人设',
+    replace: '去自称',
+    append: '原样保留',
+  }
+  /** NOT_INJECTABLE 只说「它是什么」，下一步交给详情里的 callout，别两处都指路。 */
+  const NOT_INJECTABLE = '素材条目：能查看、能归档，但不会写进 system。'
 
   let options = {}
   let catalog = window.PURGE_CATALOG ?? null
@@ -41,6 +46,10 @@
   let saveTimer = 0
   let pendingSave = null
   let busy = false
+  /** confirmedSig 记「用户按下确认时的那套配置」；配置一变就失效，退回「确认注入」。 */
+  let confirmedSig = ''
+  /** modeMenuOpen 是模式下拉面板是否展开；每次重画都要记住，否则点一下就收。 */
+  let modeMenuOpen = false
 
   // ---------- 小工具 ----------
 
@@ -58,11 +67,16 @@
     say.timer = setTimeout(() => { el.hidden = true }, 6000)
   }
 
+  /** SVG_NS 是 svg 元素的命名空间：用 createElement 造出来的 <svg> 是 HTML 未知元素，不会渲染。 */
+  const SVG_NS = 'http://www.w3.org/2000/svg'
+
   function el(tag, attrs = {}, ...kids) {
-    const node = document.createElement(tag)
+    const node = tag === 'svg' || tag === 'path'
+      ? document.createElementNS(SVG_NS, tag)
+      : document.createElement(tag)
     for (const [k, v] of Object.entries(attrs)) {
       if (v === null || v === undefined || v === false) continue
-      if (k === 'class') node.className = v
+      if (k === 'class') node.setAttribute('class', v)
       else if (k === 'text') node.textContent = v
       else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v)
       else node.setAttribute(k, v === true ? '' : String(v))
@@ -375,39 +389,68 @@
       )
       : null
 
+    // 详情不再是一张平铺的规格表：主栏说「它是什么、怎么用、占多少」，侧栏放技术事实，
+    // 底部单独一条操作栏。原来六行 dl + 一条细预算条全堆在一起，看不出主次。
+    const desc = e.meta?.description || (e.injectable ? '可写进 system 段的人设/技能文本。' : NOT_INJECTABLE)
+    const pct = Math.min(100, ((e.chars || 0) / 65536) * 100)
+    const facts = [
+      ['来源', e.source?.root === 'inline' ? '页面导入（存在 options 里）' : e.builtin ? `插件内置 ${builtinFolder(e)}/` : e.source?.root || '—'],
+      ['路径', null, 'code', e.source?.rel || '—'],
+      ['摘要', null, 'code', short(e.digest)],
+      ['版本', `v${e.version ?? 1}${history.length ? ` · 留 ${history.length} 个旧版` : ''}`],
+      ['导入', e.builtin ? '随插件' : fmtTime(e.importedAt)],
+      ...(e.meta?.sessions !== undefined ? [['会话数', String(e.meta.sessions)]] : []),
+      ...(e.meta?.turns !== undefined ? [['选定轮次', String(e.meta.turns)]] : []),
+    ]
+
     // replaceChildren 会把 null 变成 "null" 字符串，所以先过滤。
     host.replaceChildren(...[
-      el('div', {},
-        el('h2', {}, e.name, el('span', { class: `kind ${kindCls}` }, kind.label)),
-        el('p', { class: 'sub-note', text: e.meta?.description || (e.injectable ? '可写进 system 段的人设/技能文本。' : NOT_INJECTABLE) }),
+      // ---- 头：名字 + 类型 + 一句话定位 ----
+      el('header', { class: 'ins-head' },
+        el('div', { class: 'ins-title' },
+          el('h2', {}, e.name),
+          el('span', { class: `kind ${kindCls}` }, kind.label),
+          e.builtin ? el('span', { class: 'ins-badge', text: '内置' }) : null,
+        ),
+        el('p', { class: 'ins-lede', text: desc }),
       ),
-      // 内置专家：说清它是随包来的，不是用户导入的，所以没有「删除」只有「停用」。
-      // 「何时用」与「提炼自」分两行：一行里塞两件事读起来像免责声明。
-      e.builtin && e.meta?.whenToUse
-        ? el('p', { class: 'sub-note', text: `何时用：${e.meta.whenToUse}` })
-        : null,
-      e.builtin && e.meta?.source
-        ? el('p', { class: 'sub-note', text: `提炼自 ${e.meta.source}` })
-        : null,
-      el('dl', { class: 'facts' },
-        el('dt', { text: '来源' }), el('dd', { text: e.source?.root === 'inline' ? '页面导入（存在 options 里）' : e.builtin ? `插件内置 ${builtinFolder(e)}/` : e.source?.root || '—' }),
-        el('dt', { text: '路径' }), el('dd', {}, el('code', { text: e.source?.rel || '—' })),
-        el('dt', { text: '大小' }), el('dd', { text: e.injectable ? `${e.chars || 0} 字符（上限 64 KB）` : fmtSize(e.size || 0) }),
-        el('dt', { text: '摘要' }), el('dd', {}, el('code', { text: short(e.digest) })),
-        el('dt', { text: '版本' }), el('dd', { text: `v${e.version ?? 1}${history.length ? ` · 保留 ${history.length} 个旧版` : ''}` }),
-        el('dt', { text: '导入于' }), el('dd', { text: e.builtin ? '随插件' : fmtTime(e.importedAt) }),
-        e.meta?.sessions !== undefined ? el('dt', { text: '会话数' }) : null,
-        e.meta?.sessions !== undefined ? el('dd', { text: String(e.meta.sessions) }) : null,
-        e.meta?.turns !== undefined ? el('dt', { text: '选定轮次' }) : null,
-        e.meta?.turns !== undefined ? el('dd', { text: String(e.meta.turns) }) : null,
+
+      // ---- 主体：主栏（何时用 / 体量）+ 侧栏（技术事实）----
+      el('div', { class: 'ins-body' },
+        el('div', { class: 'ins-main' },
+          e.meta?.whenToUse
+            ? el('section', { class: 'ins-callout' },
+              el('h3', { text: '何时用' }),
+              el('p', { text: e.meta.whenToUse }),
+            )
+            : null,
+          e.injectable
+            ? el('section', { class: 'ins-meter' },
+              el('h3', {}, '进入 system 的体量',
+                el('span', { class: 'ins-pct', text: pct < 1 ? '<1%' : `${pct.toFixed(pct < 10 ? 1 : 0)}%` })),
+              el('div', { class: 'meter-track' }, el('div', { class: 'meter-fill', style: `width:${Math.max(pct, 0.6)}%` })),
+              el('p', { class: 'ins-meter-note', text: `${(e.chars || 0).toLocaleString('zh-CN')} / 65,536 字符 · 与人设一起拼进 system` }),
+            )
+            : el('section', { class: 'ins-callout is-material' },
+              el('h3', { text: '下一步' }),
+              el('p', { text: '把它当资料翻；要注入的话，从「导入与来源」里选一份 .md 人设或技能。' }),
+            ),
+          e.builtin && e.meta?.source
+            ? el('p', { class: 'ins-origin', text: `提炼自 ${e.meta.source}` })
+            : null,
+        ),
+        el('aside', { class: 'ins-facts' },
+          ...facts.flatMap(([k, v, tag, code]) => [
+            el('dt', { text: k }),
+            el('dd', {}, v !== null ? String(v) : el(tag || 'code', { text: code })),
+          ]),
+        ),
       ),
-      e.injectable
-        ? el('div', { class: 'budget' },
-          el('div', { class: 'track' }, el('div', { class: 'fill', style: `width:${Math.min(100, Math.round((e.chars || 0) / 65536 * 100))}%` })),
-          el('div', { class: 'label', text: `${(e.chars || 0).toLocaleString('zh-CN')} / 65,536 字符会进入 system` }),
-        )
+
+      // ---- 底：操作栏 ----
+      actions.length
+        ? el('footer', { class: 'ins-actions' }, ...actions)
         : null,
-      el('div', { class: 'actions' }, ...actions),
       versionPicker,
       pinned ? el('p', { class: 'note', text: `当前固定到 ${short(pinned)}：网关用那一版的正文，不是最新的。` }) : null,
       inline && text ? el('pre', { class: 'text', text: text.slice(0, 3200) + (text.length > 3200 ? '\n…' : '') }) : null,
@@ -460,8 +503,6 @@
       const shown = visible().length
       $('count').textContent = `${shown} / ${entries().length + inlineEntries().length} 条 · 快照 v${catalog.version} · ${fmtTime(catalog.generatedAt)}`
     }
-    $('mode').value = MODES().includes(options.mode) ? options.mode : ''
-    $('mode-help').textContent = modeHelp($('mode').value)
     renderPlan()
     renderFilters()
     renderList()
@@ -534,22 +575,142 @@
       }
     }
 
+    // 两行文字放进同一列：第一行是结论，第二行是依据；右边的胶囊组跨两行垂直居中。
+    // 原来「为什么」那行缩进 20px，看起来像挂件；现在两行左对齐，读起来是一段话。
     const rows = [
       el('span', { class: 'dot' }),
-      el('span', { class: ready ? 'who' : 'who is-empty' }, ready
-        ? `下一次 agent 请求会注入「${plan.personaName || plan.personaId}」`
-        : '现在不会注入：请求原样放行'),
-      el('span', { class: 'actions' },
-        el('span', { class: 'tag', text: `模式 ${plan.mode} · ${fromText[plan.modeFrom] || plan.modeFrom || '默认'}` }),
-        ready && plan.skills?.length ? el('span', { class: 'tag', text: `技能 ${plan.skills.length} 条` }) : null,
-        ...fix,
-        el('button', { type: 'button', class: 'quiet', onclick: () => refresh() }, '重扫确认'),
+      el('span', { class: 'plan-text' },
+        el('span', { class: ready ? 'who' : 'who is-empty' }, ready
+          ? `下一次 agent 请求会注入「${plan.personaName || plan.personaId}」`
+          : '现在不会注入：请求原样放行'),
+        el('span', { class: 'why', text: ready
+          ? `人设来源：${fromText[plan.personaFrom] || plan.personaFrom}${catalog?.purge?.bound ? '；agent-purge 的 state.json 已读到' : '；没读到 agent-purge 的 state.json'}`
+          : `${plan.blocked}${catalog?.purge?.bound ? '' : '（没读到 agent-purge 的 state.json）'}` }),
       ),
-      el('span', { class: 'why', text: ready
-        ? `人设来源：${fromText[plan.personaFrom] || plan.personaFrom}${catalog?.purge?.bound ? '；agent-purge 的 state.json 已读到' : '；没读到 agent-purge 的 state.json'}`
-        : `${plan.blocked}${catalog?.purge?.bound ? '' : '（没读到 agent-purge 的 state.json）'}` }),
+      el('span', { class: 'plan-controls' },
+        modePill(),
+        ...fix,
+        ready ? confirmButton(plan) : null,
+      ),
+      // 面板浮在胶囊组下面：.plan-controls 要 overflow:hidden 才能把两段裁成一颗胶囊，
+      // 所以面板不能放在它里面，只能挂在 .plan 上做绝对定位。
+      modeMenuOpen ? modeMenu() : null,
     ]
     host.replaceChildren(...rows.filter(Boolean))
+  }
+
+  /**
+   * modePill 是胶囊组的第一段：模式选择器。
+   *
+   * 不用原生 select：系统的下拉面板是浏览器自己画的，颜色、圆角、间距全都改不了，
+   * 深色主题下还会弹出一块浅色板。这里自绘：按钮 + 自绘面板，
+   * 键盘（上下键 / Esc / Enter）与 aria 都按 listbox 的模式接好。
+   */
+  function modePill() {
+    const value = MODES().includes(options.mode) ? options.mode : ''
+    const label = value === '' ? '跟随 agent-purge' : `${value} · ${MODE_SHORT[value] || ''}`
+    return el('button', {
+      type: 'button',
+      class: 'seg seg-mode',
+      title: modeHelp(value),
+      'aria-haspopup': 'listbox',
+      'aria-expanded': modeMenuOpen ? 'true' : 'false',
+      onclick: (e) => {
+        e.stopPropagation()
+        modeMenuOpen = !modeMenuOpen
+        renderPlan()
+        if (modeMenuOpen) document.querySelector('.seg-opt.is-on')?.focus()
+      },
+      onkeydown: (e) => {
+        if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          modeMenuOpen = true
+          renderPlan()
+          document.querySelector('.seg-opt.is-on')?.focus()
+        }
+      },
+    },
+      el('span', { class: 'seg-key', text: '模式' }),
+      el('span', { class: 'seg-value', text: label }),
+      el('svg', { class: 'seg-chev', viewBox: '0 0 12 12', 'aria-hidden': 'true' },
+        el('path', { d: 'M2.5 4.5 L6 8 L9.5 4.5', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }),
+      ),
+    )
+  }
+
+  /** modeMenu 是自绘的下拉面板：每项两行——模式名 + 一句它到底干什么。 */
+  function modeMenu() {
+    const value = MODES().includes(options.mode) ? options.mode : ''
+    const pick = (m) => {
+      modeMenuOpen = false
+      save({ mode: m }, m ? `模式改为 ${m}` : '改为跟随 agent-purge')
+    }
+    const move = (delta) => {
+      const opts = [...document.querySelectorAll('.seg-opt')]
+      const i = opts.indexOf(document.activeElement)
+      const next = opts[Math.min(opts.length - 1, Math.max(0, (i < 0 ? 0 : i) + delta))]
+      next?.focus()
+    }
+    return el('div', {
+      class: 'seg-menu',
+      role: 'listbox',
+      'aria-label': '改写模式',
+      onclick: (e) => e.stopPropagation(),
+      onkeydown: (e) => {
+        if (e.key === 'Escape') { modeMenuOpen = false; renderPlan(); return }
+        if (e.key === 'ArrowDown') { e.preventDefault(); move(1) }
+        if (e.key === 'ArrowUp') { e.preventDefault(); move(-1) }
+      },
+    },
+      ...MODES().map((m) => el('button', {
+        type: 'button',
+        class: `seg-opt${m === value ? ' is-on' : ''}`,
+        role: 'option',
+        'aria-selected': m === value ? 'true' : 'false',
+        tabindex: m === value ? '0' : '-1',
+        onclick: () => pick(m),
+      },
+        el('span', { class: 'seg-opt-body' },
+          el('span', { class: 'seg-opt-name', text: m === '' ? '跟随 agent-purge' : m }),
+          el('span', { class: 'seg-opt-sub', text: m === '' ? '用 agent-purge 的 state.json 里的 mode' : MODE_HELP[m] }),
+        ),
+        m === value
+          ? el('svg', { class: 'seg-check', viewBox: '0 0 12 12', 'aria-hidden': 'true' },
+            el('path', { d: 'M2.5 6.2 L5 8.6 L9.5 3.4', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))
+          : null,
+      )),
+    )
+  }
+
+  /**
+   * confirmButton 是「确认注入」那颗胶囊。
+   *
+   * 「已注入」有两个来源，都算数：
+   *   1. 最近一次真的经过网关的记录（catalog.last）写着同一套人设与模式——这是证据；
+   *   2. 用户按下确认，且此后配置没再动过——这是意图。
+   * 本地打个勾不叫生效，所以状态里带着「按的是哪一套配置」：改了模式或人设，
+   * 签名一变，「已注入」自动退回「确认注入」。
+   */
+  function confirmButton(plan) {
+    const sig = `${plan.mode}|${plan.personaId || ''}`
+    const last = catalog?.last
+    const evidence = Boolean(last && !last.skipped && last.mode === plan.mode && (last.persona || '') === (plan.personaId || ''))
+    const applied = evidence || confirmedSig === sig
+    return el('button', {
+      type: 'button',
+      class: `seg seg-action${applied ? ' is-applied' : ' is-armed'}`,
+      title: evidence
+        ? `最近一次生效：${fmtTime(last.at)} · ${last.agent || '未知 agent'}`
+        : applied
+          ? '已按当前配置确认注入；改了模式或人设会退回未确认'
+          : '把这套配置推给网关：重扫一次，下一次 agent 请求就按它注入',
+      onclick: () => {
+        confirmedSig = sig
+        renderPlan()
+        say('已确认注入：下一次 agent 请求按这套配置走', 'good')
+        refresh()
+      },
+    }, applied ? '已注入' : '确认注入')
   }
 
   function renderSources() {
@@ -602,24 +763,26 @@
   async function refresh() {
     if (busy) return
     busy = true
-    $('refresh').disabled = true
     try {
       save({ refreshAt: Date.now() })
       await flush()
       pollSnapshot('正在让后端重新扫描…', 25)
     } finally {
       busy = false
-      $('refresh').disabled = false
     }
   }
 
   function wire() {
-    $('mode').addEventListener('change', (e) => {
-      const value = e.target.value
-      save({ mode: value }, value ? `模式改为 ${value}` : '改为跟随 agent-purge')
-    })
-    $('refresh').addEventListener('click', refresh)
+    // 模式选择器与「确认注入」都是每次 renderPlan 重建的，监听写在创建处（onclick/onkeydown），
+    // 这里只绑那些常驻不动的控件。
     $('q').addEventListener('input', (e) => { query = e.target.value; render() })
+
+    // 点面板以外的地方就收起。用捕获阶段：面板内部自己 stopPropagation。
+    document.addEventListener('click', () => {
+      if (!modeMenuOpen) return
+      modeMenuOpen = false
+      renderPlan()
+    })
 
     $('import-run').addEventListener('click', () => {
       const path = $('import-path').value.trim()
@@ -671,6 +834,11 @@
     }
     wire()
     render()
+    // 预览用：?menu=1 直接把下拉面板展开，省得截图时还要模拟点击。
+    if (new URLSearchParams(location.search).get('menu') === '1') {
+      modeMenuOpen = true
+      renderPlan()
+    }
     if (!catalog) pollSnapshot('还没有快照，等后端第一次扫描…', 20)
   }
 

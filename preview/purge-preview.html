@@ -227,6 +227,12 @@ window.__PURGE_READY__ = {
     catalogVersion: 12,
   },
 }
+
+// 预览开关：?unsent=1 把「最近一次生效」抹掉，好看到「确认注入」尚未按下的样子。
+// 不加这个参数时，演示快照里 last 与 plan 对得上，按钮直接是「已注入」。
+if (new URLSearchParams(location.search).get('unsent') === '1') {
+  window.__PURGE_READY__.last = null
+}
 </script>
 <script>
 // 演示快照（没就绪的那种）：只有素材、没人设、模式也没选。
@@ -323,11 +329,14 @@ body {
 }
 
 /* ---------- 顶部 ---------- */
+/* 只剩品牌：模式选择与确认按钮都并进了下面的状态条。
+   顶部原来那排（选择器 + 说明 + 重新扫描）占了首屏最贵的一行，
+   说的却是同一件事——「这次注不注」，所以它们该在同一行里。 */
 .top {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px 20px;
+  display: flex;
   align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .mark { width: 28px; height: 28px; flex: none; border-radius: 8px; }
@@ -347,22 +356,8 @@ h1 {
 }
 .tagline { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
 
-.top-controls { display: grid; gap: 4px; justify-items: end; min-width: 0; }
-.controls-row { display: flex; align-items: flex-end; gap: 10px; }
 .field { display: grid; gap: 4px; }
 .field-label { font-size: 12px; color: var(--muted); }
-#mode { min-width: 196px; }
-/* 模式说明跟着下拉走：它解释的是这个选择，不该飘到页面左边去。
-   max-width 用 100% 而不是固定值：窄屏上固定值会让这一行把整页撑出横向滚动。 */
-.top-hint {
-  margin: 0;
-  max-width: 100%;
-  text-align: right;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
 
 /* ---------- 控件 ---------- */
 button {
@@ -395,35 +390,148 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---------- 注入状态：整页最该被看见的一行 ---------- */
+/* 一行里说完：注不注（点+结论）、为什么（第二行小字）、怎么注（胶囊组）。 */
 .plan {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr) max-content;
-  gap: 4px 14px;
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  margin: 16px 0 20px;
-  padding: 14px 16px;
+  gap: 6px 12px;
+  margin: 14px 0 18px;
+  padding: 7px 18px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  /* 大胶囊：圆到半高。圆角矩形和胶囊是两种形态，这里要的是后者。 */
+  border-radius: 999px;
   background: var(--card);
 }
 .plan[data-state="ready"] { border-color: color-mix(in oklab, var(--ok) 42%, var(--line)); }
 .plan[data-state="blocked"] { border-color: color-mix(in oklab, var(--danger) 34%, var(--line)); }
-.plan .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+/* 点跟第一行文字对齐（居中到整块），不贴顶：贴顶在扁胶囊里会显得歪 */
+.plan .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; align-self: center; margin-top: 0; }
 .plan[data-state="ready"] .dot { background: var(--ok); }
 .plan[data-state="blocked"] .dot { background: var(--danger); }
-.plan .who { font-size: 15px; font-weight: 560; }
+
+/* 两行文字一列：结论在上（正文字号）、依据在下（小一号），左边缘对齐成一段话。 */
+.plan .plan-text { display: grid; gap: 1px; flex: 1 1 auto; min-width: 0; }
+.plan .who { font-size: 14.5px; font-weight: 560; line-height: 1.4; min-width: 0; }
 .plan .who.is-empty { color: var(--muted); font-weight: 400; }
-.plan .why { grid-column: 2 / -1; color: var(--muted); font-size: 12.5px; }
-.plan .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-.plan .tag {
-  font-size: 12px;
-  padding: 2px 9px;
+.plan .why { color: var(--muted); font-size: 12px; line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
+
+/* ---------- 胶囊组：模式 + 确认 ---------- */
+/* 两段拼成一颗胶囊：中间用一条竖线分，外圈只有一个圆角轮廓。
+   分成两颗各自带边框的胶囊，看起来像两个不相干的按钮。 */
+.plan-controls {
+  display: inline-flex;
+  align-items: stretch;
+  flex: none;
+  border: 1px solid color-mix(in oklab, var(--line) 70%, var(--muted));
   border-radius: 999px;
-  border: 1px solid var(--line);
-  color: var(--muted);
-  white-space: nowrap;
+  background: transparent;
+  overflow: hidden;
+  transition: border-color .12s ease;
 }
-.plan .tag b { color: var(--ink); font-weight: 560; }
+.plan-controls:hover { border-color: color-mix(in oklab, var(--muted) 60%, var(--line)); }
+/* 键盘走到这里才亮：整颗胶囊一圈，不在单段里画 */
+
+/* 一段共用的底：没有自己的边框，靠容器的圆角裁切。
+   扁一点、宽一点：高度 26，水平内边距 14——胶囊的圆润来自「宽高比」，不是圆角数值。 */
+.seg {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 14px;
+  border: 0;
+  /* 圆角一律交给外层容器裁：按钮默认带的 8px 圆角会让右端比左端更方，
+     两端不对称，看着就不圆润。 */
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color .12s ease, color .12s ease;
+}
+.seg + .seg { border-left: 1px solid var(--line); }
+.seg:hover { background: color-mix(in oklab, var(--card) 70%, transparent); }
+
+.seg-key { color: var(--muted); }
+.seg-value { color: var(--ink); }
+
+/* 箭头用 svg 自己画：位置由 padding 决定，和文字基线、圆角都能对齐；
+   原生 select 的箭头永远贴在自己内容盒里，这是它一直看着别扭的原因。
+   展开时翻 180°：告诉人「再点一下是收起」，也把「刚才点到了」这件事反馈出来。 */
+.seg-chev {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  color: var(--muted);
+  margin-left: -1px;
+  transition: transform .16s cubic-bezier(.32, .72, 0, 1);
+}
+.seg-mode[aria-expanded="true"] .seg-chev { transform: rotate(180deg); }
+
+
+/* ---------- 模式下拉面板 ---------- */
+/* 自绘而不是用系统弹层：系统的下拉板颜色、圆角、间距都改不动，
+   深色主题下会突然弹出一块浅色板。面板浮在胶囊组下面，右对齐。 */
+.seg-menu {
+  position: absolute;
+  top: calc(100% - 6px);
+  right: 14px;
+  z-index: 20;
+  min-width: 248px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 10px 28px -12px rgba(0, 0, 0, .55), 0 2px 6px -2px rgba(0, 0, 0, .3);
+}
+
+.seg-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.seg-opt:hover { background: color-mix(in oklab, var(--card) 60%, var(--line)); }
+.seg-opt.is-on { background: var(--accent-soft); }
+.seg-opt-body { display: grid; gap: 1px; min-width: 0; flex: 1 1 auto; }
+.seg-opt-name { font-size: 12.5px; font-weight: 520; }
+.seg-opt-sub {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.seg-opt.is-on .seg-opt-sub { color: color-mix(in oklab, var(--accent) 70%, var(--muted)); }
+.seg-check {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  margin-top: 3px;
+  color: var(--accent);
+}
+/* 未确认：强调色提示「这里可以按」；已注入：绿底，一眼看出状态变了 */
+.seg-action.is-armed { color: var(--accent); }
+.seg-action.is-armed:hover { background: var(--accent-soft); }
+.seg-action.is-applied {
+  background: color-mix(in oklab, var(--ok) 16%, transparent);
+  color: var(--ok);
+  cursor: default;
+}
+.seg-action.is-applied:hover { background: color-mix(in oklab, var(--ok) 20%, transparent); }
 
 /* ---------- 主体：左列表 / 右组装 ---------- */
 .work {
@@ -616,26 +724,100 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   color: var(--ink);
 }
 
-/* 详情 */
+/* 详情
+   拆成三块：头（是谁）、主体（主栏讲用处、侧栏放事实）、底（能做什么）。
+   原来是一张平铺的规格表——描述、六行字段、预算条全挤在一起，眼睛没有落点。 */
+.ins-head { margin-bottom: 18px; }
+.ins-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ins-title h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: .005em; }
+.ins-badge {
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  color: var(--kind-skill);
+  border: 1px solid color-mix(in oklab, var(--kind-skill) 40%, var(--line));
+}
+.ins-lede { margin: 8px 0 0; font-size: 13px; line-height: 1.6; color: var(--ink); max-width: 62ch; }
+
+/* 主栏 + 侧栏：宽屏两列，窄屏叠起来 */
+.ins-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 232px);
+  gap: 20px 28px;
+  align-items: start;
+}
+@media (max-width: 900px) { .ins-body { grid-template-columns: minmax(0, 1fr); } }
+
+.ins-main { display: grid; gap: 14px; min-width: 0; }
+
+/* 何时用：不是一行灰字，是一块该被读到的东西 */
+.ins-callout {
+  padding: 11px 14px;
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--card) 55%, var(--line));
+}
+.ins-callout h3 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 560;
+  letter-spacing: .02em;
+  color: var(--muted);
+}
+.ins-callout p { margin: 0; font-size: 12.5px; line-height: 1.6; }
+.ins-callout.is-material { background: color-mix(in oklab, var(--danger) 9%, var(--card)); }
+
+/* 体量：给数字和一条能看的尺，而不是一条没有刻度的细线 */
+.ins-meter h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 560;
+  letter-spacing: .02em;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ins-pct { color: var(--ink); font-variant-numeric: tabular-nums; }
+.meter-track { height: 6px; border-radius: 999px; background: var(--line); }
+.meter-fill { height: 100%; border-radius: 999px; background: var(--accent); transition: width .2s ease; }
+.ins-meter-note { margin: 7px 0 0; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.ins-origin { margin: 0; font-size: 12px; color: var(--muted); }
+
+/* 侧栏：技术事实，密度高但不抢眼 */
+.ins-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 5px 14px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 12px;
+  min-width: 0;
+}
+.ins-facts dt { color: var(--muted); }
+.ins-facts dd { margin: 0; overflow-wrap: anywhere; min-width: 0; }
+.ins-facts code { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+
+/* 操作栏：底下单独一条，和内容分开 */
+.ins-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
 .kind { font-size: 12px; padding: 2px 9px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
 .kind.persona { color: var(--kind-persona); }
 .kind.skill { color: var(--kind-skill); }
 .kind.material { color: var(--kind-material); }
 .sub-note { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
 
-.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 16px 0 0; font-size: 12.5px; }
-.facts dt { color: var(--muted); }
-.facts dd { margin: 0; overflow-wrap: anywhere; min-width: 0; }
-.facts code { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
-
-.actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
 .warn { color: var(--danger); font-size: 12.5px; margin: 10px 0 0; }
 .note { color: var(--muted); font-size: 12.5px; margin: 8px 0 0; }
-
-.budget { margin: 16px 0 0; }
-.budget .track { height: 4px; border-radius: 2px; background: var(--line); }
-.budget .fill { height: 100%; min-width: 3px; border-radius: 2px; background: var(--accent); }
-.budget .label { font-size: 12px; color: var(--muted); margin-top: 6px; }
 
 pre.text {
   margin: 14px 0 0;
@@ -707,13 +889,23 @@ pre.text {
 /* 右栏不加「入场淡入」：这一栏每次点条目、每次改设置都整块重画，
    动画会跟着重放一遍，读起来像页面在闪。工作台的动效预算留给真正的状态变化（比如状态点变色）。 */
 
+/* 动效降级：这里的过渡都是短促的状态反馈，关掉不会让人错过什么。 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
+
 @media (max-width: 620px) {
   body { padding: 16px 16px 32px; }
-  .top { grid-template-columns: minmax(0, 1fr); }
-  .top-controls { justify-content: flex-start; }
-  .plan { grid-template-columns: max-content minmax(0, 1fr); }
-  .plan .actions { grid-column: 1 / -1; justify-content: flex-start; }
-  .plan .why { grid-column: 1 / -1; }
+  .top { flex-wrap: wrap; }
+  /* 窄屏：文字先占满一行，胶囊组落到第二行。
+     胶囊组要允许收缩（min-width:0），否则两段内容一长就把整行撑出屏幕。 */
+  .plan { padding: 8px 14px; border-radius: 20px; }
+  .plan .plan-text { flex-basis: 100%; }
+  .plan-controls { flex: 1 1 100%; min-width: 0; }
+  .seg { flex: 1 1 auto; min-width: 0; justify-content: center; padding: 0 10px; }
+  /* 模式那段的文字在窄屏会截断，用省略号而不是把胶囊撑破 */
+  .seg-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .seg-menu { left: 8px; right: 8px; min-width: 0; }
 }
 /* ---- 预览控制条 ---- */
 .pv-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--card);font:12px/1.4 var(--magpie-font,system-ui);color:var(--ink)}
@@ -772,28 +964,10 @@ pre.text {
 
 <header class="top">
   <div class="brand">
-    <img class="mark" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByb2xlPSJpbWciIGFyaWEtbGFiZWw9IlB1cmdlIGluIE1hZ3BpZSI+CiAgPCEtLSDnqbrlv4Pnm77niYzvvJrkuI3pk7rlupXoibLlnZfvvIzlj6rnlZnova7lu5PjgIIKICAgICAgIOS+p+agj+WunumZheWPque7mSAxMuKAkzE2cHjvvIzmj4/ovrnmmK/ov5nph4zllK/kuIDnmoTlj6/osIPpobnvvJoKICAgICAgIHc2L3c4IOWcqCAxMnB4IOS4i+WwluinkuS4juebtOi+ueiiq+ejqOW5s+OAgeeci+edgOWDj+WchueOr++8m3cxMCDku6XkuIrlnKggNjRweCDkuIvnqbrlv4Plj4jnvKnmiJDkuIDlsI/lnZfjgIIKICAgICAgIHc5IOaYr+S4pOWktOmDveeri+W+l+S9j+eahOS4gOaho+OAguminOiJsiAjNGY1ZmUwIOWcqOa3seiJsuS4jua1heiJsuWuv+S4u+iDjOaZr+S4iumDveWOi+W+l+S9j++8jOS4pOS+p+WFseeUqOS4gOeJiOOAgiAtLT4KICA8cGF0aCBkPSJNMzIgMTAgTDUzIDE5IFYzNiBDNTMgNDUuNSA0My41IDUyLjUgMzIgNTQuNSBDMjAuNSA1Mi41IDExIDQ1LjUgMTEgMzYgVjE5IFoiCiAgICAgICAgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNGY1ZmUwIiBzdHJva2Utd2lkdGg9IjkiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4=" alt="" width="28" height="28">
-    <div class="brand-text">
+    <img class="mark" src="card.png" alt="" width="28" height="28">    <div class="brand-text">
       <h1>破甲 <span class="brand-tail">Purge</span></h1>
       <p class="tagline">本地 purge 目录 → 网关 system 改写</p>
     </div>
-  </div>
-
-  <div class="top-controls">
-    <div class="controls-row">
-      <label class="field">
-        <span class="field-label" id="mode-label">改写模式</span>
-        <select id="mode" aria-labelledby="mode-label">
-          <option value="">跟随 agent-purge</option>
-          <option value="off">off · 不动请求</option>
-          <option value="strict">strict · 只留人设</option>
-          <option value="replace">replace · 人设 + 去掉自称</option>
-          <option value="append">append · 人设 + 原样保留</option>
-        </select>
-      </label>
-      <button id="refresh" type="button" class="quiet">重新扫描</button>
-    </div>
-    <p class="top-hint" id="mode-help"></p>
   </div>
 </header>
 
@@ -895,10 +1069,15 @@ pre.text {
     replace: '人设放最前，宿主 system 里「自称 + 点名模型/厂商」的行删掉。',
     append: '人设放最前，宿主 system 原样保留。',
   }
-  /** NOT_INJECTABLE 说清「这条为什么不会进 system」，并指出下一步：导入的是素材，不是人设。 */
-  const NOT_INJECTABLE =
-    '素材条目：可查、可归档，不会写进 system。要注入请导入人设或技能（.md / .markdown / .txt），' +
-    '或在下方「从本机选文件」里挑一个 md。'
+  /** MODE_SHORT 是下拉里模式名后面那一截：只够一格，别写成整句。 */
+  const MODE_SHORT = {
+    off: '不动请求',
+    strict: '只留人设',
+    replace: '去自称',
+    append: '原样保留',
+  }
+  /** NOT_INJECTABLE 只说「它是什么」，下一步交给详情里的 callout，别两处都指路。 */
+  const NOT_INJECTABLE = '素材条目：能查看、能归档，但不会写进 system。'
 
   let options = {}
   let catalog = window.PURGE_CATALOG ?? null
@@ -908,6 +1087,10 @@ pre.text {
   let saveTimer = 0
   let pendingSave = null
   let busy = false
+  /** confirmedSig 记「用户按下确认时的那套配置」；配置一变就失效，退回「确认注入」。 */
+  let confirmedSig = ''
+  /** modeMenuOpen 是模式下拉面板是否展开；每次重画都要记住，否则点一下就收。 */
+  let modeMenuOpen = false
 
   // ---------- 小工具 ----------
 
@@ -925,11 +1108,16 @@ pre.text {
     say.timer = setTimeout(() => { el.hidden = true }, 6000)
   }
 
+  /** SVG_NS 是 svg 元素的命名空间：用 createElement 造出来的 <svg> 是 HTML 未知元素，不会渲染。 */
+  const SVG_NS = 'http://www.w3.org/2000/svg'
+
   function el(tag, attrs = {}, ...kids) {
-    const node = document.createElement(tag)
+    const node = tag === 'svg' || tag === 'path'
+      ? document.createElementNS(SVG_NS, tag)
+      : document.createElement(tag)
     for (const [k, v] of Object.entries(attrs)) {
       if (v === null || v === undefined || v === false) continue
-      if (k === 'class') node.className = v
+      if (k === 'class') node.setAttribute('class', v)
       else if (k === 'text') node.textContent = v
       else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v)
       else node.setAttribute(k, v === true ? '' : String(v))
@@ -1242,39 +1430,68 @@ pre.text {
       )
       : null
 
+    // 详情不再是一张平铺的规格表：主栏说「它是什么、怎么用、占多少」，侧栏放技术事实，
+    // 底部单独一条操作栏。原来六行 dl + 一条细预算条全堆在一起，看不出主次。
+    const desc = e.meta?.description || (e.injectable ? '可写进 system 段的人设/技能文本。' : NOT_INJECTABLE)
+    const pct = Math.min(100, ((e.chars || 0) / 65536) * 100)
+    const facts = [
+      ['来源', e.source?.root === 'inline' ? '页面导入（存在 options 里）' : e.builtin ? `插件内置 ${builtinFolder(e)}/` : e.source?.root || '—'],
+      ['路径', null, 'code', e.source?.rel || '—'],
+      ['摘要', null, 'code', short(e.digest)],
+      ['版本', `v${e.version ?? 1}${history.length ? ` · 留 ${history.length} 个旧版` : ''}`],
+      ['导入', e.builtin ? '随插件' : fmtTime(e.importedAt)],
+      ...(e.meta?.sessions !== undefined ? [['会话数', String(e.meta.sessions)]] : []),
+      ...(e.meta?.turns !== undefined ? [['选定轮次', String(e.meta.turns)]] : []),
+    ]
+
     // replaceChildren 会把 null 变成 "null" 字符串，所以先过滤。
     host.replaceChildren(...[
-      el('div', {},
-        el('h2', {}, e.name, el('span', { class: `kind ${kindCls}` }, kind.label)),
-        el('p', { class: 'sub-note', text: e.meta?.description || (e.injectable ? '可写进 system 段的人设/技能文本。' : NOT_INJECTABLE) }),
+      // ---- 头：名字 + 类型 + 一句话定位 ----
+      el('header', { class: 'ins-head' },
+        el('div', { class: 'ins-title' },
+          el('h2', {}, e.name),
+          el('span', { class: `kind ${kindCls}` }, kind.label),
+          e.builtin ? el('span', { class: 'ins-badge', text: '内置' }) : null,
+        ),
+        el('p', { class: 'ins-lede', text: desc }),
       ),
-      // 内置专家：说清它是随包来的，不是用户导入的，所以没有「删除」只有「停用」。
-      // 「何时用」与「提炼自」分两行：一行里塞两件事读起来像免责声明。
-      e.builtin && e.meta?.whenToUse
-        ? el('p', { class: 'sub-note', text: `何时用：${e.meta.whenToUse}` })
-        : null,
-      e.builtin && e.meta?.source
-        ? el('p', { class: 'sub-note', text: `提炼自 ${e.meta.source}` })
-        : null,
-      el('dl', { class: 'facts' },
-        el('dt', { text: '来源' }), el('dd', { text: e.source?.root === 'inline' ? '页面导入（存在 options 里）' : e.builtin ? `插件内置 ${builtinFolder(e)}/` : e.source?.root || '—' }),
-        el('dt', { text: '路径' }), el('dd', {}, el('code', { text: e.source?.rel || '—' })),
-        el('dt', { text: '大小' }), el('dd', { text: e.injectable ? `${e.chars || 0} 字符（上限 64 KB）` : fmtSize(e.size || 0) }),
-        el('dt', { text: '摘要' }), el('dd', {}, el('code', { text: short(e.digest) })),
-        el('dt', { text: '版本' }), el('dd', { text: `v${e.version ?? 1}${history.length ? ` · 保留 ${history.length} 个旧版` : ''}` }),
-        el('dt', { text: '导入于' }), el('dd', { text: e.builtin ? '随插件' : fmtTime(e.importedAt) }),
-        e.meta?.sessions !== undefined ? el('dt', { text: '会话数' }) : null,
-        e.meta?.sessions !== undefined ? el('dd', { text: String(e.meta.sessions) }) : null,
-        e.meta?.turns !== undefined ? el('dt', { text: '选定轮次' }) : null,
-        e.meta?.turns !== undefined ? el('dd', { text: String(e.meta.turns) }) : null,
+
+      // ---- 主体：主栏（何时用 / 体量）+ 侧栏（技术事实）----
+      el('div', { class: 'ins-body' },
+        el('div', { class: 'ins-main' },
+          e.meta?.whenToUse
+            ? el('section', { class: 'ins-callout' },
+              el('h3', { text: '何时用' }),
+              el('p', { text: e.meta.whenToUse }),
+            )
+            : null,
+          e.injectable
+            ? el('section', { class: 'ins-meter' },
+              el('h3', {}, '进入 system 的体量',
+                el('span', { class: 'ins-pct', text: pct < 1 ? '<1%' : `${pct.toFixed(pct < 10 ? 1 : 0)}%` })),
+              el('div', { class: 'meter-track' }, el('div', { class: 'meter-fill', style: `width:${Math.max(pct, 0.6)}%` })),
+              el('p', { class: 'ins-meter-note', text: `${(e.chars || 0).toLocaleString('zh-CN')} / 65,536 字符 · 与人设一起拼进 system` }),
+            )
+            : el('section', { class: 'ins-callout is-material' },
+              el('h3', { text: '下一步' }),
+              el('p', { text: '把它当资料翻；要注入的话，从「导入与来源」里选一份 .md 人设或技能。' }),
+            ),
+          e.builtin && e.meta?.source
+            ? el('p', { class: 'ins-origin', text: `提炼自 ${e.meta.source}` })
+            : null,
+        ),
+        el('aside', { class: 'ins-facts' },
+          ...facts.flatMap(([k, v, tag, code]) => [
+            el('dt', { text: k }),
+            el('dd', {}, v !== null ? String(v) : el(tag || 'code', { text: code })),
+          ]),
+        ),
       ),
-      e.injectable
-        ? el('div', { class: 'budget' },
-          el('div', { class: 'track' }, el('div', { class: 'fill', style: `width:${Math.min(100, Math.round((e.chars || 0) / 65536 * 100))}%` })),
-          el('div', { class: 'label', text: `${(e.chars || 0).toLocaleString('zh-CN')} / 65,536 字符会进入 system` }),
-        )
+
+      // ---- 底：操作栏 ----
+      actions.length
+        ? el('footer', { class: 'ins-actions' }, ...actions)
         : null,
-      el('div', { class: 'actions' }, ...actions),
       versionPicker,
       pinned ? el('p', { class: 'note', text: `当前固定到 ${short(pinned)}：网关用那一版的正文，不是最新的。` }) : null,
       inline && text ? el('pre', { class: 'text', text: text.slice(0, 3200) + (text.length > 3200 ? '\n…' : '') }) : null,
@@ -1327,8 +1544,6 @@ pre.text {
       const shown = visible().length
       $('count').textContent = `${shown} / ${entries().length + inlineEntries().length} 条 · 快照 v${catalog.version} · ${fmtTime(catalog.generatedAt)}`
     }
-    $('mode').value = MODES().includes(options.mode) ? options.mode : ''
-    $('mode-help').textContent = modeHelp($('mode').value)
     renderPlan()
     renderFilters()
     renderList()
@@ -1401,22 +1616,142 @@ pre.text {
       }
     }
 
+    // 两行文字放进同一列：第一行是结论，第二行是依据；右边的胶囊组跨两行垂直居中。
+    // 原来「为什么」那行缩进 20px，看起来像挂件；现在两行左对齐，读起来是一段话。
     const rows = [
       el('span', { class: 'dot' }),
-      el('span', { class: ready ? 'who' : 'who is-empty' }, ready
-        ? `下一次 agent 请求会注入「${plan.personaName || plan.personaId}」`
-        : '现在不会注入：请求原样放行'),
-      el('span', { class: 'actions' },
-        el('span', { class: 'tag', text: `模式 ${plan.mode} · ${fromText[plan.modeFrom] || plan.modeFrom || '默认'}` }),
-        ready && plan.skills?.length ? el('span', { class: 'tag', text: `技能 ${plan.skills.length} 条` }) : null,
-        ...fix,
-        el('button', { type: 'button', class: 'quiet', onclick: () => refresh() }, '重扫确认'),
+      el('span', { class: 'plan-text' },
+        el('span', { class: ready ? 'who' : 'who is-empty' }, ready
+          ? `下一次 agent 请求会注入「${plan.personaName || plan.personaId}」`
+          : '现在不会注入：请求原样放行'),
+        el('span', { class: 'why', text: ready
+          ? `人设来源：${fromText[plan.personaFrom] || plan.personaFrom}${catalog?.purge?.bound ? '；agent-purge 的 state.json 已读到' : '；没读到 agent-purge 的 state.json'}`
+          : `${plan.blocked}${catalog?.purge?.bound ? '' : '（没读到 agent-purge 的 state.json）'}` }),
       ),
-      el('span', { class: 'why', text: ready
-        ? `人设来源：${fromText[plan.personaFrom] || plan.personaFrom}${catalog?.purge?.bound ? '；agent-purge 的 state.json 已读到' : '；没读到 agent-purge 的 state.json'}`
-        : `${plan.blocked}${catalog?.purge?.bound ? '' : '（没读到 agent-purge 的 state.json）'}` }),
+      el('span', { class: 'plan-controls' },
+        modePill(),
+        ...fix,
+        ready ? confirmButton(plan) : null,
+      ),
+      // 面板浮在胶囊组下面：.plan-controls 要 overflow:hidden 才能把两段裁成一颗胶囊，
+      // 所以面板不能放在它里面，只能挂在 .plan 上做绝对定位。
+      modeMenuOpen ? modeMenu() : null,
     ]
     host.replaceChildren(...rows.filter(Boolean))
+  }
+
+  /**
+   * modePill 是胶囊组的第一段：模式选择器。
+   *
+   * 不用原生 select：系统的下拉面板是浏览器自己画的，颜色、圆角、间距全都改不了，
+   * 深色主题下还会弹出一块浅色板。这里自绘：按钮 + 自绘面板，
+   * 键盘（上下键 / Esc / Enter）与 aria 都按 listbox 的模式接好。
+   */
+  function modePill() {
+    const value = MODES().includes(options.mode) ? options.mode : ''
+    const label = value === '' ? '跟随 agent-purge' : `${value} · ${MODE_SHORT[value] || ''}`
+    return el('button', {
+      type: 'button',
+      class: 'seg seg-mode',
+      title: modeHelp(value),
+      'aria-haspopup': 'listbox',
+      'aria-expanded': modeMenuOpen ? 'true' : 'false',
+      onclick: (e) => {
+        e.stopPropagation()
+        modeMenuOpen = !modeMenuOpen
+        renderPlan()
+        if (modeMenuOpen) document.querySelector('.seg-opt.is-on')?.focus()
+      },
+      onkeydown: (e) => {
+        if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          modeMenuOpen = true
+          renderPlan()
+          document.querySelector('.seg-opt.is-on')?.focus()
+        }
+      },
+    },
+      el('span', { class: 'seg-key', text: '模式' }),
+      el('span', { class: 'seg-value', text: label }),
+      el('svg', { class: 'seg-chev', viewBox: '0 0 12 12', 'aria-hidden': 'true' },
+        el('path', { d: 'M2.5 4.5 L6 8 L9.5 4.5', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }),
+      ),
+    )
+  }
+
+  /** modeMenu 是自绘的下拉面板：每项两行——模式名 + 一句它到底干什么。 */
+  function modeMenu() {
+    const value = MODES().includes(options.mode) ? options.mode : ''
+    const pick = (m) => {
+      modeMenuOpen = false
+      save({ mode: m }, m ? `模式改为 ${m}` : '改为跟随 agent-purge')
+    }
+    const move = (delta) => {
+      const opts = [...document.querySelectorAll('.seg-opt')]
+      const i = opts.indexOf(document.activeElement)
+      const next = opts[Math.min(opts.length - 1, Math.max(0, (i < 0 ? 0 : i) + delta))]
+      next?.focus()
+    }
+    return el('div', {
+      class: 'seg-menu',
+      role: 'listbox',
+      'aria-label': '改写模式',
+      onclick: (e) => e.stopPropagation(),
+      onkeydown: (e) => {
+        if (e.key === 'Escape') { modeMenuOpen = false; renderPlan(); return }
+        if (e.key === 'ArrowDown') { e.preventDefault(); move(1) }
+        if (e.key === 'ArrowUp') { e.preventDefault(); move(-1) }
+      },
+    },
+      ...MODES().map((m) => el('button', {
+        type: 'button',
+        class: `seg-opt${m === value ? ' is-on' : ''}`,
+        role: 'option',
+        'aria-selected': m === value ? 'true' : 'false',
+        tabindex: m === value ? '0' : '-1',
+        onclick: () => pick(m),
+      },
+        el('span', { class: 'seg-opt-body' },
+          el('span', { class: 'seg-opt-name', text: m === '' ? '跟随 agent-purge' : m }),
+          el('span', { class: 'seg-opt-sub', text: m === '' ? '用 agent-purge 的 state.json 里的 mode' : MODE_HELP[m] }),
+        ),
+        m === value
+          ? el('svg', { class: 'seg-check', viewBox: '0 0 12 12', 'aria-hidden': 'true' },
+            el('path', { d: 'M2.5 6.2 L5 8.6 L9.5 3.4', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))
+          : null,
+      )),
+    )
+  }
+
+  /**
+   * confirmButton 是「确认注入」那颗胶囊。
+   *
+   * 「已注入」有两个来源，都算数：
+   *   1. 最近一次真的经过网关的记录（catalog.last）写着同一套人设与模式——这是证据；
+   *   2. 用户按下确认，且此后配置没再动过——这是意图。
+   * 本地打个勾不叫生效，所以状态里带着「按的是哪一套配置」：改了模式或人设，
+   * 签名一变，「已注入」自动退回「确认注入」。
+   */
+  function confirmButton(plan) {
+    const sig = `${plan.mode}|${plan.personaId || ''}`
+    const last = catalog?.last
+    const evidence = Boolean(last && !last.skipped && last.mode === plan.mode && (last.persona || '') === (plan.personaId || ''))
+    const applied = evidence || confirmedSig === sig
+    return el('button', {
+      type: 'button',
+      class: `seg seg-action${applied ? ' is-applied' : ' is-armed'}`,
+      title: evidence
+        ? `最近一次生效：${fmtTime(last.at)} · ${last.agent || '未知 agent'}`
+        : applied
+          ? '已按当前配置确认注入；改了模式或人设会退回未确认'
+          : '把这套配置推给网关：重扫一次，下一次 agent 请求就按它注入',
+      onclick: () => {
+        confirmedSig = sig
+        renderPlan()
+        say('已确认注入：下一次 agent 请求按这套配置走', 'good')
+        refresh()
+      },
+    }, applied ? '已注入' : '确认注入')
   }
 
   function renderSources() {
@@ -1469,24 +1804,26 @@ pre.text {
   async function refresh() {
     if (busy) return
     busy = true
-    $('refresh').disabled = true
     try {
       save({ refreshAt: Date.now() })
       await flush()
       pollSnapshot('正在让后端重新扫描…', 25)
     } finally {
       busy = false
-      $('refresh').disabled = false
     }
   }
 
   function wire() {
-    $('mode').addEventListener('change', (e) => {
-      const value = e.target.value
-      save({ mode: value }, value ? `模式改为 ${value}` : '改为跟随 agent-purge')
-    })
-    $('refresh').addEventListener('click', refresh)
+    // 模式选择器与「确认注入」都是每次 renderPlan 重建的，监听写在创建处（onclick/onkeydown），
+    // 这里只绑那些常驻不动的控件。
     $('q').addEventListener('input', (e) => { query = e.target.value; render() })
+
+    // 点面板以外的地方就收起。用捕获阶段：面板内部自己 stopPropagation。
+    document.addEventListener('click', () => {
+      if (!modeMenuOpen) return
+      modeMenuOpen = false
+      renderPlan()
+    })
 
     $('import-run').addEventListener('click', () => {
       const path = $('import-path').value.trim()
@@ -1538,6 +1875,11 @@ pre.text {
     }
     wire()
     render()
+    // 预览用：?menu=1 直接把下拉面板展开，省得截图时还要模拟点击。
+    if (new URLSearchParams(location.search).get('menu') === '1') {
+      modeMenuOpen = true
+      renderPlan()
+    }
     if (!catalog) pollSnapshot('还没有快照，等后端第一次扫描…', 20)
   }
 
