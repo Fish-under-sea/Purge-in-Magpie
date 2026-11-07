@@ -38,6 +38,26 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ---------- 嵌入布局：按实际可用高度铺满，整页不滚 ---------- */
+/* magpie 把插件页放在一个固定高度的面板里。用 vh 算高度会撞上「面板比视口矮」，
+   于是页面自己长出一条滚动条，两层滚动叠在一起很难用。
+   这里改成：body 撑满 100%，上下固定，中间那块吃剩余高度并在内部滚。 */
+@media (min-width: 901px) {
+  /* 用 clip 而不是 hidden：这里是「这块本来就不该滚」，不是「临时锁住」。
+     hidden 会造出一个 scrollTop 恒为 0 的滚动容器，滚动位置和焦点滚入都会打架；
+     clip 直接不产生滚动容器。 */
+  html, body { height: 100%; overflow: clip; }
+  body {
+    display: flex;
+    flex-direction: column;
+    padding: 16px 20px calc(12px + env(safe-area-inset-bottom));
+    /* 嵌入宽度通常比 1160 宽，不再居中留白，把空间还给两栏 */
+    max-width: none;
+  }
+  .top, .plan, .foot { flex: none; }
+  .work { flex: 1 1 auto; min-height: 0; }
+}
+
 /* ---------- 顶部 ---------- */
 /* 只剩品牌：模式选择与确认按钮都并进了下面的状态条。
    顶部原来那排（选择器 + 说明 + 重新扫描）占了首屏最贵的一行，
@@ -258,12 +278,9 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
    底下就是一大片空白。 */
 .work {
   display: grid;
-  grid-template-columns: minmax(300px, 352px) minmax(0, 1fr);
-  gap: 26px;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  gap: 24px;
   align-items: stretch;
-  /* 左列表与右装配框共用同一个上限。两处各自写死过一个值（700 与 520），
-     结果就是并排两块高度不一样、底边参差。 */
-  --split-h: min(70vh, 700px);
 }
 @media (max-width: 900px) { .work { grid-template-columns: minmax(0, 1fr); align-items: start; } }
 
@@ -295,17 +312,13 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   gap: 1px;
   border-top: 1px solid var(--line);
 }
-/* 桌面端列表自己滚，高度跟着右栏走，但封顶。
-   只给下限不给上限：23 份技能会把它拉到比右栏还长，整页都被拽下去。
-   下限保证条目少时不缩成一条；上限保证条目不封顶。
+/* 桌面端：列表吃掉左栏剩下的高度，自己滚，整页不再滚。
    窄屏不做嵌套滚动——那比页面滚动难用。
    底部加一层淡出：滚动区硬切会把最后一行切成半截，看起来像坏了。 */
 @media (min-width: 901px) {
   .list {
-    /* 固定高度而不是 max-height：两块并排，长度要一样；只给上限的话，
-       内容少的那块会缩回去，一眼就看出参差。 */
-    flex: 0 0 auto;
-    height: var(--split-h);
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
     padding-bottom: 4px;
@@ -473,7 +486,11 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 .badge.on { color: var(--ok); }
 
 /* ---------- 右栏：组装 / 详情 ---------- */
-.panel { min-width: 0; min-height: 320px; }
+.panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+/* 装配区与详情区都吃满右栏剩余高度，各自内部滚动：
+   页面整体不滚，滚的只能是这两块之一。 */
+#assembly, #inspect { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+#inspect { overflow-y: auto; }
 
 .panel h2 {
   margin: 0 0 14px;
@@ -511,11 +528,11 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   align-content: start;
   border-top: 1px solid var(--line);
 }
-/* 桌面端只给上限、不固定高度：内容少时框就跟着短。
-   以前固定 700px，三行内容也会撑出一大片空底，看着像没加载完。 */
+/* 桌面端：装配清单吃掉右栏剩余高度，自己滚。 */
 @media (min-width: 901px) {
   .stack-view {
-    max-height: var(--split-h);
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
     /* 底部淡出：硬切会把最后一行切成半截，看着像坏了 */
@@ -843,19 +860,32 @@ textarea.text-edit:focus-visible {
   margin: 0;
 }
 
-/* ---------- 底部：只剩「导入」，平时一行 ---------- */
-/* 原来是四块等宽折叠区，标题长短不一、位置对不齐，看着像没排过。
-   现在「校验记录」只在真有拒绝项时出现，「最近一次生效」并进了右栏标题行，
-   「边界」的说明在 README 里——底部就一条，左对齐，不再等分。 */
+/* ---------- 底部：导入常态显示 ---------- */
+/* 页面铺满嵌入高度、整页不滚，所以底部这块必须窄。
+   导入不再折叠：藏进 details 里既难找，展开时还会把上面两块挤小。 */
 .foot {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 24px;
-  margin-top: 28px;
-  padding-top: 14px;
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
   border-top: 1px solid var(--line);
-  align-items: start;
 }
+.import-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.import-bar .field-label { flex: none; }
+.import-bar input {
+  flex: 1 1 220px;
+  min-width: 0;
+  height: 30px;
+}
+.import-bar button { flex: none; height: 30px; min-height: 30px; }
+.import-bar .chips { flex: none; }
+.import-bar .chip { min-height: 26px; padding: 2px 9px; }
+.import-hint { margin: 0; font-size: 12px; }
 .fold { min-width: 0; flex: 1 1 auto; }
 /* 展开的那块占满整行：折叠态是标题，展开后是表单，挤在一列里连路径都填不下。 */
 .fold[open] { flex: 1 1 100%; }

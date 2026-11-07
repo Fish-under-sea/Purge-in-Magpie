@@ -41,30 +41,20 @@
 </div>
 
 <footer class="foot">
-  <details class="fold" id="import-fold">
-    <summary>导入</summary>
-    <div class="fold-body">
-      <label class="field">
-        <span class="field-label">文件路径</span>
-        <div class="inline-row">
-          <input id="import-path" type="text" placeholder="留空点「选择」挑文件，或直接粘一个绝对路径" aria-label="要导入的文件路径" spellcheck="false">
-          <button id="import-pick" type="button">选择</button>
-          <button id="import-run" type="button">导入</button>
-        </div>
-      </label>
-      <p class="note" id="import-hint">只认 <code>.md</code> <code>.markdown</code> <code>.txt</code> <code>.json</code> <code>.zip</code>。选文件后路径会填进来，再点一次「导入」才真的导入。</p>
-
-      <label class="field">
-        <span class="field-label">这份文件是</span>
-        <div class="chips" id="import-kind" role="group" aria-label="导入类型">
-          <button type="button" class="chip" data-kind="auto" aria-pressed="true">自动判断</button>
-          <button type="button" class="chip" data-kind="persona" aria-pressed="false">人设</button>
-          <button type="button" class="chip" data-kind="skill" aria-pressed="false">技能</button>
-        </div>
-      </label>
-      <p class="note">「自动判断」按 frontmatter 与正文结构猜；猜错就在这里指定，它会覆盖判定结果。</p>
+  <!-- 导入常态显示，不再折叠：页面在 magpie 里是按嵌入高度铺满的，
+       藏进折叠区只会让人找不到，而且折叠动画还会顶动下面的布局。 -->
+  <div class="import-bar" id="import-fold">
+    <span class="field-label">导入</span>
+    <input id="import-path" type="text" placeholder="留空点「选择」挑文件，或直接粘一个绝对路径" aria-label="要导入的文件路径" spellcheck="false">
+    <button id="import-pick" type="button">选择</button>
+    <button id="import-run" type="button">导入</button>
+    <div class="chips" id="import-kind" role="group" aria-label="导入类型">
+      <button type="button" class="chip" data-kind="auto" aria-pressed="true">自动判断</button>
+      <button type="button" class="chip" data-kind="persona" aria-pressed="false">人设</button>
+      <button type="button" class="chip" data-kind="skill" aria-pressed="false">技能</button>
     </div>
-  </details>
+  </div>
+  <p class="note import-hint" id="import-hint">只认 .md / .markdown / .txt / .json / .zip。选文件后路径会填进来，再点一次「导入」才真的导入；「自动判断」猜错的就在这里指定。</p>
 
   <details class="fold" id="rejects-fold" hidden>
     <summary>校验记录 <span class="fold-count" id="rejects-count"></span></summary>
