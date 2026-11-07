@@ -29,7 +29,6 @@
   <section class="rail" aria-label="条目列表">
     <div class="rail-tools">
       <input id="q" type="search" placeholder="搜名字、来源或类型" aria-label="搜索条目" autocomplete="off">
-      <div id="filters" class="chips" role="group" aria-label="按类型筛选"></div>
     </div>
     <p class="rail-count" id="count">正在读快照…</p>
     <div id="list" class="list" role="listbox" aria-label="条目"></div>
@@ -42,7 +41,7 @@
 </div>
 
 <footer class="foot">
-  <details class="fold">
+  <details class="fold" id="import-fold">
     <summary>导入</summary>
     <div class="fold-body">
       <label class="field">

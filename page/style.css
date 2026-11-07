@@ -329,6 +329,8 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 }
 .group-head:first-child { padding-top: 8px; }
 .group-head .n { font-variant-numeric: tabular-nums; }
+/* 被「去看人设」定位到的那一节闪一下：单纯滚过去，眼睛未必跟得上 */
+.group-head.is-flash { color: var(--accent); transition: color .2s ease; }
 
 /* 一行就是一张卡：点行本身做它最主要的事，右侧「查看」进详情。
    行是 div 而不是 button——里面还嵌着一个「查看」按钮，button 套 button 不合法。 */

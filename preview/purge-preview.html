@@ -1285,6 +1285,8 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 }
 .group-head:first-child { padding-top: 8px; }
 .group-head .n { font-variant-numeric: tabular-nums; }
+/* 被「去看人设」定位到的那一节闪一下：单纯滚过去，眼睛未必跟得上 */
+.group-head.is-flash { color: var(--accent); transition: color .2s ease; }
 
 /* 一行就是一张卡：点行本身做它最主要的事，右侧「查看」进详情。
    行是 div 而不是 button——里面还嵌着一个「查看」按钮，button 套 button 不合法。 */
@@ -1893,7 +1895,6 @@ textarea.text-edit:focus-visible {
   <section class="rail" aria-label="条目列表">
     <div class="rail-tools">
       <input id="q" type="search" placeholder="搜名字、来源或类型" aria-label="搜索条目" autocomplete="off">
-      <div id="filters" class="chips" role="group" aria-label="按类型筛选"></div>
     </div>
     <p class="rail-count" id="count">正在读快照…</p>
     <div id="list" class="list" role="listbox" aria-label="条目"></div>
@@ -1906,7 +1907,7 @@ textarea.text-edit:focus-visible {
 </div>
 
 <footer class="foot">
-  <details class="fold">
+  <details class="fold" id="import-fold">
     <summary>导入</summary>
     <div class="fold-body">
       <label class="field">
@@ -1983,7 +1984,6 @@ textarea.text-edit:focus-visible {
   let options = {}
   let catalog = window.PURGE_CATALOG ?? null
   let selected = ''
-  let filter = ''
   let query = ''
   let saveTimer = 0
   let pendingSave = null
@@ -2136,34 +2136,29 @@ textarea.text-edit:focus-visible {
 
   // ---------- 渲染 ----------
 
-  function renderFilters() {
-    const host = $('filters')
-    const kinds = [...new Set(entries().map((e) => e.kind))]
-    host.replaceChildren(
-      el('button', { type: 'button', class: 'chip', 'aria-pressed': filter === '', onclick: () => { filter = ''; render() } }, `全部 ${entries().length}`),
-      ...kinds.map((kind) => {
-        const n = entries().filter((e) => e.kind === kind).length
-        return el('button', {
-          type: 'button',
-          class: 'chip',
-          'aria-pressed': filter === kind,
-          onclick: () => { filter = filter === kind ? '' : kind; render() },
-        }, `${KINDS[kind]?.label || kind} ${n}`)
-      }),
-    )
-  }
-
   function visible() {
     const q = query.trim().toLowerCase()
     return entries()
-      .filter((e) => (filter ? e.kind === filter : true))
       .filter((e) => (q ? `${e.name} ${e.id} ${e.source?.rel ?? ''} ${KINDS[e.kind]?.label ?? ''}`.toLowerCase().includes(q) : true))
       .concat(
         inlineEntries()
-          .filter((e) => (filter ? e.kind === filter : true))
           .filter((e) => (q ? `${e.name} ${e.id}`.toLowerCase().includes(q) : true))
           .map(shaped),
       )
+  }
+
+  /**
+   * focusKind 把列表滚到某一类的分节标题上。
+   *
+   * 筛选芯片撤掉之后，「去看人设」这类提示按钮不能再用「筛选到只剩人设」——
+   * 那样用户会被困在一个只剩一类的列表里。滚过去就够了。
+   */
+  function focusKind(kind) {
+    const head = document.querySelector(`.group-head[data-kind="${kind}"]`)
+    if (!head) return
+    head.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    head.classList.add('is-flash')
+    setTimeout(() => head.classList.remove('is-flash'), 900)
   }
 
   function renderList() {
@@ -2179,18 +2174,25 @@ textarea.text-edit:focus-visible {
       host.replaceChildren(el('p', { class: 'empty', text: '没有匹配的条目。清掉搜索，或导入一份文件再来。' }))
       return
     }
-    // 分组比逐行挂「内置」胶囊干净：内置是「这一整组都随包来」，说一次就够。
-    const groups = [
-      { key: 'builtin', label: '内置专家与技能', rows: rows.filter((e) => e.builtin) },
-      { key: 'mine', label: '我的来源', rows: rows.filter((e) => !e.builtin) },
-    ].filter((g) => g.rows.length)
+    // 按类型分组，取代原来那排筛选芯片：芯片既是筛选器、又兼职「告诉你有几类」，
+    // 而类型本来就能靠分节标题说清楚——一条信息两个出口，删掉芯片反而更好读。
+    const order = ['persona', 'skill']
+    const kinds = [...new Set(rows.map((e) => e.kind))]
+    kinds.sort((a, b) => {
+      const ia = order.indexOf(a)
+      const ib = order.indexOf(b)
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
+    })
+    const groups = kinds
+      .map((kind) => ({ kind, label: KINDS[kind]?.label || kind, rows: rows.filter((e) => e.kind === kind) }))
+      .filter((g) => g.rows.length)
 
     const nodes = []
     // 算一次「这次由谁顶上」，每行都用它判断人设是否处于启用态。
     // 逐行重算会把 resolve 跑 23 遍，纯属浪费。
     const effectivePersona = currentPlan()?.personaId || ''
     for (const group of groups) {
-      nodes.push(el('div', { class: 'group-head' },
+      nodes.push(el('div', { class: 'group-head', 'data-kind': group.kind },
         el('span', { text: group.label }),
         el('span', { class: 'n', text: String(group.rows.length) }),
       ))
@@ -2277,9 +2279,9 @@ textarea.text-edit:focus-visible {
       el('span', { class: 'spine', style: `--spine:var(--kind-${kindClass(e.kind)})` }),
       el('span', {},
         el('span', { class: 'title', text: e.name }),
-        // 内置条目只说类型：它们全是随插件来的，再标一遍「随插件」等于每行重复同一句话。
-        // 导入的才需要文件名，那是唯一能区分同名条目的信息。
-        el('span', { class: 'meta', text: e.builtin ? kind.label : `${kind.label} · ${e.source?.rel ?? ''}` }),
+        // 类型已经不在这里写了：列表按类型分节，每节标题就是类型。
+        // 行内只留导入条目的文件名——那是唯一能区分同名条目的信息。
+        e.builtin ? null : el('span', { class: 'meta', text: e.source?.rel ?? '' }),
       ),
       // 右侧一列：状态徽标 + 「查看」。徽标原来是跟在名字后面的，
       // 名字长短不一时它左右乱跳；挪到右边固定位置，一列扫下去就能看出谁没启用。
@@ -2768,7 +2770,6 @@ textarea.text-edit:focus-visible {
       $('count').textContent = `${shown} / ${entries().length + inlineEntries().length} 条 · ${verText} · ${fmtTime(catalog.generatedAt)}`
     }
     renderPlan()
-    renderFilters()
     renderList()
     // 选着条目就看详情，没选就回组装预览：右栏永远有东西，不留空屏。
     renderAssembly()
@@ -2871,14 +2872,19 @@ textarea.text-edit:focus-visible {
       if (!stale && (plan.blockedCode === 'no-persona' || plan.blockedCode === 'persona-missing')) {
         fix.push(el('button', {
           type: 'button',
-          onclick: () => { filter = 'persona'; query = ''; render() },
+          onclick: () => focusKind('persona'),
         }, '去看人设'))
       }
       if (!stale && plan.blockedCode === 'no-persona-file') {
         fix.push(el('button', {
           type: 'button',
           class: 'primary',
-          onclick: () => { filter = 'persona'; query = ''; render() },
+          onclick: () => {
+            // 没有人设文件时，列表里连「人设」这一节都没有，滚不过去；
+            // 打开导入区才是能解决问题的那一步。
+            const fold = $('import-fold')
+            if (fold) { fold.open = true; fold.scrollIntoView({ block: 'nearest' }) }
+          },
         }, '导入一份人设'))
       }
     }
