@@ -19,6 +19,12 @@
   --kind-material: #8a7f70;
   --ok: #2f8f5b;
   --danger: #c25556;
+
+  /* 选中态与焦点环一律用中性色，不用强调色。
+     强调色留给「真的要按」的动作（确认注入、保存），
+     到处都是紫色高亮时，反而看不出哪个才是主操作，而且很吵。 */
+  --focus: color-mix(in oklab, var(--ink) 45%, transparent);
+  --selected: color-mix(in oklab, var(--ink) 8%, transparent);
 }
 
 * { box-sizing: border-box; }
@@ -91,7 +97,9 @@ select, input[type="search"], input[type="text"], textarea {
 }
 @media (max-width: 620px) { select, input, textarea { font-size: 16px; } }
 textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 12px; line-height: 1.6; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 焦点环用中性墨色而不是强调色：到处一圈紫会把「哪个才是主操作」冲淡。
+   只走键盘时才出现，鼠标点不亮——这是 :focus-visible 的本意。 */
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* ---------- 注入状态：整页最该被看见的一行 ---------- */
 /* 一行里说完：注不注（点+结论）、为什么（第二行小字）、怎么注（胶囊组）。
@@ -212,7 +220,7 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   cursor: pointer;
 }
 .seg-opt:hover { background: color-mix(in oklab, var(--card) 60%, var(--line)); }
-.seg-opt.is-on { background: var(--accent-soft); }
+.seg-opt.is-on { background: var(--selected); }
 .seg-opt-body { display: grid; gap: 1px; min-width: 0; flex: 1 1 auto; }
 .seg-opt-name { font-size: 12.5px; font-weight: 520; }
 .seg-opt-sub {
@@ -221,17 +229,17 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   color: var(--muted);
   overflow-wrap: anywhere;
 }
-.seg-opt.is-on .seg-opt-sub { color: color-mix(in oklab, var(--accent) 70%, var(--muted)); }
 .seg-check {
   width: 12px;
   height: 12px;
   flex: none;
   margin-top: 3px;
-  color: var(--accent);
+  color: var(--ink);
 }
+.seg-opt.is-on .seg-opt-sub { color: var(--ink); }
 /* 未确认：强调色提示「这里可以按」；已注入：绿底，一眼看出状态变了 */
 .seg-action.is-armed { color: var(--accent); }
-.seg-action.is-armed:hover { background: var(--accent-soft); }
+.seg-action.is-armed:hover { background: var(--selected); }
 .seg-action.is-applied {
   background: color-mix(in oklab, var(--ok) 16%, transparent);
   color: var(--ok);
@@ -267,7 +275,7 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   background: transparent;
   color: var(--muted);
 }
-.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--selected); border-color: transparent; color: var(--ink); }
 /* 上下留白让它和右栏的比例尺刻度落在同一行：两栏顶上都是「数字行」，
    一个说条数、一个说字符量，位置错开看着就是没排过。 */
 .rail-count { margin: 22px 0 14px; color: var(--muted); font-size: 12px; line-height: 19px; }
@@ -325,7 +333,7 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 .group { min-width: 0; }
 .group > .group-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   padding: 14px 2px 6px;
@@ -339,11 +347,14 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   background: var(--bg);
 }
 .group > .group-head::-webkit-details-marker { display: none; }
+/* 三角用 align-self 对到整行中线：靠 baseline 对会跟着文字基线跑，
+   而文字有行高、三角没有，看起来就偏低半格。 */
 .group > .group-head::after {
   content: "";
   width: 0;
   height: 0;
   margin-left: 6px;
+  align-self: center;
   border-top: 4px solid currentColor;
   border-left: 3.5px solid transparent;
   border-right: 3.5px solid transparent;
@@ -353,7 +364,7 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 }
 .group[open] > .group-head::after { transform: none; }
 .group > .group-head:hover { color: var(--ink); }
-.group > .group-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+.group > .group-head:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 4px; }
 .group-head .group-name { flex: 1 1 auto; min-width: 0; }
 .group-head:first-child { padding-top: 8px; }
 .group-head .n { font-variant-numeric: tabular-nums; flex: none; }
@@ -386,8 +397,8 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   gap: 8px;
   min-width: 0;
 }
-.row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.row[aria-selected="true"] { background: var(--accent-soft); }
+.row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.row[aria-selected="true"] { background: var(--selected); }
 /* 未启用的行把文字压暗，一眼看出「这条没在干活」；启用的保持正常对比度。 */
 .row:not(.is-on) .title { color: var(--muted); font-weight: 460; }
 .row > span { min-width: 0; }
@@ -408,9 +419,10 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 }
 .row:hover .row-view { border-color: var(--line); }
 .row-view:hover { color: var(--ink); border-color: color-mix(in oklab, var(--muted) 60%, var(--line)); }
+/* 选中的那一行：只让「查看」变成描边实心按钮，不再染紫 */
 .row[aria-selected="true"] .row-view {
-  color: var(--accent);
-  border-color: color-mix(in oklab, var(--accent) 45%, var(--line));
+  color: var(--ink);
+  border-color: color-mix(in oklab, var(--muted) 55%, var(--line));
 }
 .row .title {
   font-weight: 520;
@@ -803,7 +815,7 @@ textarea.text-edit {
   resize: vertical;
 }
 textarea.text-edit:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
