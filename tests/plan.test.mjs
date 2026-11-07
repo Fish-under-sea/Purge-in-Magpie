@@ -44,6 +44,21 @@ test('都没有时没就绪，原因是「注入是关的」', () => {
   assert.match(plan.blocked, /开始注入/)
 })
 
+test('注入关着时也要报出「会用谁」：否则人设行全长成未启用、点了像没反应', () => {
+  // 显式选了哪位，即使注入关着也要认
+  const picked = resolve({ options: { persona: 'anima' }, state: null, entries })
+  assert.equal(picked.ready, false, '关着就是没就绪')
+  assert.equal(picked.personaId, 'anima', '仍要报出用户选的那位')
+
+  // 没选时按同一口径自动挑（这里只有 anima 一条非内置人设）
+  const auto = resolve({ options: {}, state: null, entries })
+  assert.equal(auto.personaId, 'anima')
+
+  // 显式停用的不被自动挑回来
+  const offed = resolve({ options: { enabled: { anima: false } }, state: null, entries })
+  assert.equal(offed.personaId, '')
+})
+
 test('有模式没人设：来源里一条人设都没有 → no-persona-file', () => {
   const plan = resolve({ options: { mode: 'append' }, state: null, entries: [entries[1]] })
   assert.equal(plan.blockedCode, 'no-persona-file')

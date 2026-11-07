@@ -47,18 +47,27 @@
     const pageMode = MODES.includes(options.mode) ? options.mode : ''
     const mode = pageMode || 'off'
     const modeFrom = pageMode ? 'page' : 'default'
+
+    const byId = new Map()
+    for (const e of entries) if (e && typeof e.id === 'string' && !byId.has(e.id)) byId.set(e.id, e)
+    const personas = entries.filter((e) => e.kind === 'persona')
+
+    // 人设的解析放在「注入关着」之前：关掉注入只是「这次不写请求」，
+    // 用户选了哪位人设这件事没变。先返回的话 personaId 是空串，
+    // 列表里每条人设都显示「未启用」，点它也就看着毫无反应。
     if (mode === 'off') {
+      const picked = personas.find((e) => e.id === (typeof options.persona === 'string' ? options.persona.trim() : ''))
+        || personas.find((e) => e.default === true && options.enabled?.[e.id] !== false)
+        || personas.find((e) => e.builtin !== true && options.enabled?.[e.id] !== false)
       return {
         ...blank(modeFrom, mode, '', modeFrom === 'default' ? 'no-mode' : 'mode-off'),
+        // blank 的第三个参数是「被挡住的文案」，不是 personaId，所以人设得另塞
+        personaId: picked?.id || '',
         blocked: modeFrom === 'default'
           ? '注入是关的：请求原样放行。按右侧「开始注入」才会改写请求'
           : '当前模式是 off，请求原样放行',
       }
     }
-
-    const byId = new Map()
-    for (const e of entries) if (e && typeof e.id === 'string' && !byId.has(e.id)) byId.set(e.id, e)
-    const personas = entries.filter((e) => e.kind === 'persona')
 
     let personaId = ''
     let personaFrom = ''
