@@ -133,7 +133,7 @@ test('不认的后缀不进清单', () => {
   assert.equal(rejected.length, 0)
 })
 
-test('同一个摘要算重复，同 id 新摘要算新版本并留旧正文', () => {
+test('同一个摘要算重复，同 id 新摘要算新版本', () => {
   const base = { id: 'anima', name: 'Anima', kind: 'persona', status: 'ok', injectable: true, source: { root: '/x', rel: 'a.md' }, size: 10, importedAt: 1 }
   const v1 = { ...base, digest: 'd1', text: '第一版' }
   const v2 = { ...base, digest: 'd2', text: '第二版' }
@@ -141,7 +141,8 @@ test('同一个摘要算重复，同 id 新摘要算新版本并留旧正文', (
   assert.equal(merged.entries.length, 1)
   assert.equal(merged.entries[0].version, 2)
   assert.equal(merged.entries[0].history[0].digest, 'd1')
-  assert.equal(merged.entries[0].history[0].text, '第一版')
+  // 历史不再留正文副本：正文一律现读源文件（避免把手册聚进 state 里被判毒）
+  assert.equal(merged.entries[0].history[0].text, '')
 
   const dup = mergeEntries([{ ...v1 }], [v1])
   assert.equal(dup.entries.length, 1)

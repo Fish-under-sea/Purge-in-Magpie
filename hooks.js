@@ -9,7 +9,7 @@
 // 也是这个形状，我们沿用并把「清点」做成自动的。
 //
 // 失败一律 fail-open：改不动就原样放行，绝不把 agent 的请求弄挂。
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { compose, rewrite, supported } from './lib/rewrite.mjs'
@@ -19,8 +19,7 @@ import { ensurePaths, loadCatalog, ownOptions, sync } from './lib/state.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
-/** inlineEntries 把页面直接贴进来的人设/技能（存在 options.inline 里）并进候选。 */
-export function inlineEntries(options = {}) {
+/** inlineEntries 把页面直接贴进来的人设/技能（存在 options.inline 里）并进候选。 */export function inlineEntries(options = {}) {
   const list = Array.isArray(options.inline) ? options.inline : []
   return list
     .filter((e) => e && typeof e.id === 'string' && typeof e.text === 'string' && e.text.trim())
@@ -38,6 +37,36 @@ export function inlineEntries(options = {}) {
     }))
 }
 
+/**
+ * builtinText 现读一条条目的正文。
+ *
+ * 快照里不再存正文：内置技能是一批红队手册，聚进任何单个文件都会被
+ * Defender 当成脚本载荷反复上传。这里按 source.root/rel 直接读原文件，
+ * 每次注入最多读几条，代价很小；用 (路径, mtime, 大小) 做键缓存，
+ * 文件没变就不重复读。
+ */
+const textCache = new Map()
+function builtinText(e) {
+  if (typeof e.text === 'string' && e.text.trim()) return e.text
+  const root = e.source?.root
+  const rel = e.source?.rel
+  if (!root || !rel) return ''
+  const file = join(root, rel)
+  try {
+    const st = statSync(file)
+    const key = `${file}|${st.mtimeMs}|${st.size}`
+    const hit = textCache.get(key)
+    if (hit !== undefined) return hit
+    const body = readFileSync(file, 'utf8')
+    // 只留最近 64 条：一次注入只用到几条，缓存是为了省重复读，不是当索引
+    if (textCache.size > 64) textCache.clear()
+    textCache.set(key, body)
+    return body
+  } catch {
+    return ''
+  }
+}
+
 /** pick 选出这一次要注入的文本：人设一条，显式启用的技能若干。 */
 export function pick(catalog, options = {}, state = null, agent = '') {
   // applyPrefs 先套「用户改过/删过」的结果：页面上编辑过的正文与删掉的条目
@@ -46,7 +75,12 @@ export function pick(catalog, options = {}, state = null, agent = '') {
     [...(Array.isArray(catalog?.entries) ? catalog.entries : []), ...inlineEntries(options)],
     options,
   )
-  const usable = entries.filter((e) => e.status === 'ok' && e.injectable && typeof e.text === 'string' && e.text.trim())
+  const usable = entries
+    .filter((e) => e.status === 'ok' && e.injectable)
+    // 快照里没有正文（见 inventory.snapshotOf 的注释：聚起来会被 Defender 判毒），
+    // 这里按 source.root/rel 现读。读不到就跳过，不静默塞空串。
+    .map((e) => (builtinText(e) ? { ...e, text: builtinText(e) } : e))
+    .filter((e) => typeof e.text === 'string' && e.text.trim())
   const pinned = options.pinned && typeof options.pinned === 'object' ? options.pinned : {}
 
   /** resolve 按 pinned 取版本：固定到某一版时用那一版的正文，找不到就如实报告。 */

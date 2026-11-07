@@ -18,7 +18,7 @@ function workspace() {
 }
 after(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }) })
 
-test('sync 写出条目表与页面快照，可注入条目的正文随快照下来', () => {
+test('sync 写出条目表与页面快照，正文一律不落盘', () => {
   const here = workspace()
   const src = join(here, 'src')
   mkdirSync(src)
@@ -30,10 +30,14 @@ test('sync 写出条目表与页面快照，可注入条目的正文随快照下
     mode: 'append',
   }, { force: true })
   assert.equal(catalog.entries.length, 1)
-  assert.equal(catalog.entries[0].text, '正文在这里')
+  // 正文不落盘：聚进单个文件会被 Defender 判成脚本载荷，注入时由 hooks.js 现读。
+  // 返回的这份是本次扫描的内存结果，落盘那一份要看 state/catalog.json。
+  assert.equal(catalog.entries[0].chars, '正文在这里'.length, '字数照记，界面要用')
+  assert.equal(catalog.entries[0].injectable, true)
+  const persisted = loadCatalog({ catalogFile: join(here, 'state', 'catalog.json') })
+  assert.equal(persisted.entries[0].text, '', 'state/catalog.json 里不能有正文')
   assert.equal(snapshot.entries.length, 1)
-  // 页面要能「查看原文」：可注入条目的正文必须跟着快照走，否则按钮点开是空的。
-  assert.equal(snapshot.entries[0].text, '正文在这里', '可注入条目要带正文')
+  assert.equal(snapshot.entries[0].text, '')
   assert.equal(snapshot.options.mode, 'append')
 
   const onDisk = readFileSync(join(here, 'page', 'catalog.js'), 'utf8')
@@ -41,26 +45,32 @@ test('sync 写出条目表与页面快照，可注入条目的正文随快照下
   assert.equal(loadCatalog({ catalogFile: join(here, 'state', 'catalog.json') }).entries.length, 1)
 })
 
-test('正文不进 page/catalog.js：脚本里只有元数据，正文单独写 .json', () => {
+test('任何落盘文件里都不出现正文（.js 与 .json 一视同仁）', () => {
   const here = workspace()
   const src = join(here, 'src')
   mkdirSync(src)
-  // 正文里放一个「红队手册」式的字样，确认它没被内联进脚本
+  // 正文里放一个「红队手册」式的字样，确认它没被内联进任何落盘文件
   writeFileSync(join(src, 'a.md'), '---\nid: a\nkind: skill\n---\n这里是 webshell 与 Meterpreter 的用法')
   sync(here, { imports: [{ op: 'import', path: join(src, 'a.md'), at: 1 }] }, { force: true })
 
-  const js = readFileSync(join(here, 'page', 'catalog.js'), 'utf8')
-  const json = readFileSync(join(here, 'page', 'catalog.json'), 'utf8')
+  // Defender 看的不是扩展名，是「单个文件里聚了多少这类内容」——
+  // 所以 .js 和 .json 都必须干净，正文只在原文件里待着。
+  for (const f of ['page/catalog.js', 'page/catalog.json', 'state/catalog.json']) {
+    const body = readFileSync(join(here, f), 'utf8')
+    assert.ok(!body.includes('webshell'), `${f} 不能含正文`)
+    assert.ok(!body.includes('Meterpreter'), `${f} 不能含正文`)
+  }
 
-  // 这一条就是 Defender 判毒的直接原因：脚本文件里不该出现大段攻击正文
-  assert.ok(!js.includes('webshell'), 'catalog.js 不能含正文')
-  assert.ok(!js.includes('Meterpreter'), 'catalog.js 不能含正文')
-  assert.equal(JSON.parse(js.replace(/^window\.PURGE_CATALOG = /, '').replace(/;\s*$/, '')).entries[0].text, '', '脚本里的 text 应为空串')
-
-  // 完整快照仍然带正文：网关侧要用它来拼 system
-  const full = JSON.parse(json)
-  assert.equal(full.entries[0].text, '这里是 webshell 与 Meterpreter 的用法')
-  assert.equal(full.entries[0].chars, '这里是 webshell 与 Meterpreter 的用法'.length)
+  // 条目本身仍然可注入，只是正文要现读
+  const { catalog } = sync(here, { imports: [{ op: 'import', path: join(src, 'a.md'), at: 1 }] }, { force: true })
+  const entry = catalog.entries[0]
+  assert.equal(entry.injectable, true)
+  assert.equal(entry.chars, '这里是 webshell 与 Meterpreter 的用法'.length)
+  assert.equal(
+    readFileSync(join(entry.source.root, entry.source.rel), 'utf8').includes('webshell'),
+    true,
+    '正文还在源文件里，注入时现读得到',
+  )
 })
 
 test('导入与刷新戳都没变时不重扫', () => {

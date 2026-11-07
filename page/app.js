@@ -1396,7 +1396,7 @@
       if (typeof e?.text === 'string' && e.text.trim()) bodyText.set(e.id, e.text)
     }
     textsState = bodyText.size ? 'ready' : 'blocked'
-    if (!bodyText.size) textsError = '快照里没有正文'
+    if (!bodyText.size) textsError = '正文不落盘：注入时才从原文件读，页面这一份只有元数据'
     render()
     if (selected) renderInspector()
   }
