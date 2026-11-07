@@ -56,8 +56,8 @@
   let pendingFile = null
   /** importKind 是导入时选的类型：auto 交给判定，persona/skill 覆盖它。 */
   let importKind = 'auto'
-  /** confirmedSig 记「用户按下确认时的那套配置」；配置一变就失效，退回「确认注入」。 */
-  let confirmedSig = ''
+  /** pendingMode 是「还没开启注入时，下次会用哪个模式」。它只是待选值，不写 options。 */
+  let pendingMode = 'replace'
   /** modeMenuOpen 是模式下拉面板是否展开；每次重画都要记住，否则点一下就收。 */
   let modeMenuOpen = false
 
@@ -851,7 +851,16 @@
   }
 
   /** MODES 是模式下拉的全部取值：没有「跟随上游」这一档，模式必须自己选。 */
-  const MODES = () => ['off', 'strict', 'replace', 'append']
+  /**
+   * MODES 是模式下拉的全部取值。
+   *
+   * 没有 off：关掉注入由右侧那颗开关负责，不再混进下拉里。
+   * 「选模式」和「开不开」是两件事——混在一起时，用户要关掉注入得先学会
+   * 在下拉里挑一个叫 off 的东西，那不像个开关。
+   */
+  const MODES = () => ['strict', 'replace', 'append']
+  /** injecting 判断现在是不是真的在注入：mode 落在三种改写模式之一才算。 */
+  const injecting = () => MODES().includes(options.mode)
 
   /** modeHelp 说清当前值到底意味着什么；未选时说清未选就是不动请求。 */
   function modeHelp(value) {
@@ -897,6 +906,9 @@
    */
   function renderPlan() {
     const host = $('plan')
+    // 模式是从外面改的（比如用户手改 plugins.json、或别的入口写了 mode）：
+    // 把待选值跟上，否则下拉会一直显示旧的待选模式。
+    if (injecting()) pendingMode = options.mode
     const plan = currentPlan()
     if (!plan) {
       host.dataset.state = 'idle'
@@ -922,12 +934,8 @@
       save({ ...patch, refreshAt: Date.now() }, note)
       pollSnapshot('等后端按新设置重扫…', 25)
     }
-    // 本地已经选好模式时，绝不再劝「用 replace 开始注入」——
-    // 那正是图一里「写着 append、旁边却叫你换成 replace」的自相矛盾。
-    const localMode = MODES().includes(options.mode) ? options.mode : ''
-    if (!ready && !localMode) {
-      fix.push(el('button', { type: 'button', class: 'primary', onclick: () => fixed({ mode: 'replace' }, '模式改为 replace') }, '用 replace 开始注入'))
-    }
+    // 不再有「用 replace 开始注入」这个补救按钮：右侧那颗开关就是干这个的，
+    // 同样的动作摆两处只会让人犹豫点哪个。
     if (!ready) {
       // 旧人设被删掉后 options.persona 会一直指着它，卡在 persona-missing：
       // 这个问题点「去看人设」永远绕不出来，得给一个直接改掉它的动作。
@@ -982,7 +990,8 @@
       el('span', { class: 'plan-controls' },
         modePill(),
         ...fix,
-        ready ? confirmButton(plan) : null,
+        // 开关永远在场：关掉注入不需要「先满足条件」，随时都能关。
+        injectToggle(plan),
       ),
       // 面板浮在胶囊组下面：.plan-controls 要 overflow:hidden 才能把两段裁成一颗胶囊，
       // 所以面板不能放在它里面，只能挂在 .plan 上做绝对定位。
@@ -999,22 +1008,28 @@
    * 键盘（上下键 / Esc / Enter）与 aria 都按 listbox 的模式接好。
    */
   function modePill() {
-    const value = MODES().includes(options.mode) ? options.mode : ''
-    // 未选模式时不假装跟随谁：直接说「未选」，点开才去挑。
-    const label = value === '' ? '未选' : `${value} · ${MODE_SHORT[value] || ''}`
+    const live = injecting()
+    // 没开启注入时显示「下次会用哪个模式」，它只是待选值，还没写进 options。
+    const value = live ? options.mode : pendingMode
+    const label = `${value} · ${MODE_SHORT[value] || ''}`
     return el('button', {
       type: 'button',
-      class: 'seg seg-mode',
-      title: modeHelp(value),
+      class: `seg seg-mode${live ? ' is-locked' : ''}`,
+      title: live ? '注入已开启：先关掉右侧的开关才能换模式' : modeHelp(value),
       'aria-haspopup': 'listbox',
       'aria-expanded': modeMenuOpen ? 'true' : 'false',
+      'aria-disabled': live ? 'true' : 'false',
       onclick: (e) => {
         e.stopPropagation()
+        // 开启注入期间锁住模式：改模式等于换一套改写规则，
+        // 而请求随时可能进来——必须先把注入关掉，改完再开。
+        if (live) { say('注入开着的时候不能换模式：先点右边的「已注入」关掉它', 'bad'); return }
         modeMenuOpen = !modeMenuOpen
         renderPlan()
         if (modeMenuOpen) document.querySelector('.seg-opt.is-on')?.focus()
       },
       onkeydown: (e) => {
+        if (live) return
         if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           modeMenuOpen = true
@@ -1033,10 +1048,13 @@
 
   /** modeMenu 是自绘的下拉面板：每项两行——模式名 + 一句它到底干什么。 */
   function modeMenu() {
-    const value = MODES().includes(options.mode) ? options.mode : ''
+    const value = injecting() ? options.mode : pendingMode
     const pick = (m) => {
       modeMenuOpen = false
-      save({ mode: m }, `模式改为 ${m}`)
+      // 只记住待选值，不写 options：写进去就等于开始注入了，
+      // 而「什么时候开始」由右侧那颗开关决定。
+      pendingMode = m
+      renderPlan()
     }
     const move = (delta) => {
       const opts = [...document.querySelectorAll('.seg-opt')]
@@ -1076,38 +1094,35 @@
   }
 
   /**
-   * confirmButton 是「确认注入」那颗胶囊。
+   * injectToggle 是右侧那颗开关：「开始注入」/「已注入」。
    *
-   * 「已注入」有两个来源，都算数：
-   *   1. 最近一次真的经过网关的记录（catalog.last）写着同一套人设与模式——这是证据；
-   *   2. 用户按下确认，且此后配置没再动过——这是意图。
-   * 本地打个勾不叫生效，所以状态里带着「按的是哪一套配置」：改了模式或人设，
-   * 签名一变，「已注入」自动退回「确认注入」。
+   * 它管「开不开」，模式下拉管「怎么改」。以前这里只是打个本地勾，
+   * 关掉注入还得去下拉里挑一个叫 off 的东西——两件相反的事绕在两个地方。
+   * 现在点「已注入」就是关掉（mode 清空），模式下拉随之解锁。
    */
-  function confirmButton(plan) {
-    // 签名用「实际会生效的那一套」：刚改了模式但后端还没重扫时，plan 是旧的，
-    // 拿它算签名会让按钮继续显示「已注入」——那等于替一套还没生效的配置背书。
-    const mode = MODES().includes(options.mode) ? options.mode : plan.mode
+  function injectToggle(plan) {
+    const live = injecting()
     const persona = (typeof options.persona === 'string' && options.persona.trim()) || plan.personaId || ''
-    const sig = `${mode}|${persona}`
+    // 证据只用来写 title：最近一次后端真的改过，且用的就是现在这套
     const last = catalog?.last
-    const evidence = Boolean(last && !last.skipped && last.mode === mode && (last.persona || '') === persona)
-    const applied = evidence || confirmedSig === sig
+    const evidence = Boolean(live && last && !last.skipped && last.mode === options.mode && (last.persona || '') === persona)
+
     return el('button', {
       type: 'button',
-      class: `seg seg-action${applied ? ' is-applied' : ' is-armed'}`,
-      title: evidence
-        ? `最近一次生效：${fmtTime(last.at)} · ${last.agent || '未知 agent'}`
-        : applied
-          ? '已按当前配置确认注入；改了模式或人设会退回未确认'
-          : '把这套配置推给网关：重扫一次，下一次 agent 请求就按它注入',
+      class: `seg seg-action${live ? ' is-applied' : ' is-armed'}`,
+      'aria-pressed': live ? 'true' : 'false',
+      title: live
+        ? `已开启注入（${options.mode}）${evidence ? `；最近一次生效 ${fmtTime(last.at)}` : ''}。点一下关掉，之后请求原样放行`
+        : `按 ${pendingMode} 开始注入。开启后模式会锁定，要换模式得先关掉`,
       onclick: () => {
-        confirmedSig = sig
-        renderPlan()
-        say('已确认注入：下一次 agent 请求按这套配置走', 'good')
+        if (live) {
+          save({ mode: '' }, `已关闭注入：请求原样放行（记住的模式是 ${pendingMode}）`)
+          return
+        }
+        save({ mode: pendingMode }, `已开始注入：模式 ${pendingMode}`)
         refresh()
       },
-    }, applied ? '已注入' : '确认注入')
+    }, live ? '已注入' : '开始注入')
   }
 
   // ---------- 动作 ----------

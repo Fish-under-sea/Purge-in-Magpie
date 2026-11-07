@@ -20,7 +20,7 @@ test('页面选了模式与人设 → 就绪，来源都写「本页设置」', 
   assert.deepEqual(plan.skills.map((s) => s.id), ['outline'])
 })
 
-test('没打开 useAgentPurge 时不读上游：即使有 state 也按「还没选模式」处理', () => {
+test('没打开 useAgentPurge 时不读上游：即使有 state 也按「注入是关的」处理', () => {
   const plan = resolve({ options: {}, state: ap(), entries })
   assert.equal(plan.ready, false)
   assert.equal(plan.blockedCode, 'no-mode')
@@ -34,11 +34,14 @@ test('打开 useAgentPurge 后才跟随上游，并把来源标成 agent-purge',
   assert.equal(plan.personaFrom, 'agent-purge')
 })
 
-test('都没有时没就绪，原因是「还没选模式」', () => {
+test('都没有时没就绪，原因是「注入是关的」', () => {
   const plan = resolve({ options: {}, state: null, entries })
   assert.equal(plan.ready, false)
   assert.equal(plan.blockedCode, 'no-mode')
-  assert.match(plan.blocked, /还没选模式/)
+  // 「开不开」现在由页面那颗开关负责，所以文案说的是去按「开始注入」，
+  // 不再让人去下拉里挑模式——模式本身已经选好了。
+  assert.match(plan.blocked, /注入是关的/)
+  assert.match(plan.blocked, /开始注入/)
 })
 
 test('有模式没人设：来源里一条人设都没有 → no-persona-file', () => {

@@ -55,11 +55,11 @@ test('不可注入的条目不会被选成人设', () => {
   assert.match(picked.plan.blocked, /还没有人设/)
 })
 
-test('没有模式（页面没选）时不注入，并说明原因', () => {
+test('注入关着的时候不注入，并说明原因', () => {
   const picked = pick(catalog, {})
   assert.equal(picked.text, '')
   assert.equal(picked.plan.mode, 'off')
-  assert.match(picked.plan.blocked, /模式是 off/)
+  assert.match(picked.plan.blocked, /注入是关的/)
 })
 
 test('没打开 useAgentPurge 时上游的 state 不参与判定', () => {

@@ -187,6 +187,12 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   transition: transform .16s cubic-bezier(.32, .72, 0, 1);
 }
 .seg-mode[aria-expanded="true"] .seg-chev { transform: rotate(180deg); }
+/* 开启注入期间模式被锁：箭头淡掉、鼠标恢复默认。
+   不给「可点」的暗示，比点了再弹一句提示好。 */
+.seg-mode.is-locked { cursor: default; }
+.seg-mode.is-locked .seg-value { color: var(--muted); }
+.seg-mode.is-locked .seg-chev { opacity: .3; }
+.seg-mode.is-locked:hover { background: transparent; }
 
 
 /* ---------- 模式下拉面板 ---------- */

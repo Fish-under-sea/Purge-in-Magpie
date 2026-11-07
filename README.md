@@ -190,7 +190,7 @@ magpie plugin list
 
 | 字段 | 作用 |
 | --- | --- |
-| `mode` | `off` / `strict` / `replace` / `append`；**留空就是 off**（不注入） |
+| `mode` | `strict` / `replace` / `append`；**留空就是不注入**（等同于 off） |
 | `persona` | 用哪条人设的 id；留空取标了 `default` 的底座人设，再留空取第一个启用的人设 |
 | `agents` | 只对这些 magpie agent 生效，如 `["claude","codex"]`；空数组 = 全部 |
 | `enabled` | `{条目id: true/false}`：技能必须显式为 `true` 才注入；人设默认启用 |
@@ -225,10 +225,14 @@ magpie plugin options magpie-purge '{"useAgentPurge":true}'
 
 模式语义与上游一致：
 
-- `off`：不动请求；
+- 不注入（`mode` 留空，页面上就是「开始注入」没按）：不动请求；
 - `strict`：整段可控 system 换成人设——**原 system 里的工具说明文本也会一起没了**；
 - `replace`：人设放最前，宿主 system 里「自称 + 点名模型/厂商」的行删掉（近似）；
 - `append`：人设放最前，宿主 system 原样保留。
+
+页面上「开不开」和「怎么改」是两件事：右侧那颗开关负责注入开关，模式下拉只选改写方式。
+**注入开着的时候模式是锁住的**——改模式等于换一套改写规则，而请求随时可能进来，
+必须先关掉注入再改。
 
 ## 页面怎么告诉你「到底注不注」
 
