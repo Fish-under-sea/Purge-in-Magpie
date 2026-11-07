@@ -418,6 +418,19 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   flex-wrap: wrap;
 }
 .panel .h2-sub { color: var(--muted); font-size: 12px; font-weight: 400; }
+/* 「上次生效」贴在标题行最右：和结论、比例尺同处一个视觉带，
+   不再单独占一块折叠区。细节在 title 里，鼠标停上去才展开。 */
+.panel .h2-last {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50%;
+}
 
 /* 组装预览：把「会拼成什么」摊开成按顺序的积木，这是本页最有辨识度的一块。
    不再是「一个圆角大盒子」：去掉外框与圆角，用细线分隔每一段，
@@ -762,20 +775,22 @@ textarea.text-edit:focus-visible {
   margin: 0;
 }
 
-/* ---------- 底部：四块可折叠，平时只占一行 ---------- */
+/* ---------- 底部：只剩「导入」，平时一行 ---------- */
+/* 原来是四块等宽折叠区，标题长短不一、位置对不齐，看着像没排过。
+   现在「校验记录」只在真有拒绝项时出现，「最近一次生效」并进了右栏标题行，
+   「边界」的说明在 README 里——底部就一条，左对齐，不再等分。 */
 .foot {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px 24px;
-  margin-top: 30px;
-  padding-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin-top: 28px;
+  padding-top: 14px;
   border-top: 1px solid var(--line);
   align-items: start;
 }
-.fold { min-width: 0; }
-/* 展开的那块占满整行：折叠态是一排等宽标题，展开后是表单，
-   挤在 220px 一列里连路径都填不下。 */
-.fold[open] { grid-column: 1 / -1; }
+.fold { min-width: 0; flex: 1 1 auto; }
+/* 展开的那块占满整行：折叠态是标题，展开后是表单，挤在一列里连路径都填不下。 */
+.fold[open] { flex: 1 1 100%; }
 .fold > summary {
   cursor: pointer;
   color: var(--muted);

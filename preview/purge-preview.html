@@ -1374,6 +1374,19 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   flex-wrap: wrap;
 }
 .panel .h2-sub { color: var(--muted); font-size: 12px; font-weight: 400; }
+/* 「上次生效」贴在标题行最右：和结论、比例尺同处一个视觉带，
+   不再单独占一块折叠区。细节在 title 里，鼠标停上去才展开。 */
+.panel .h2-last {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50%;
+}
 
 /* 组装预览：把「会拼成什么」摊开成按顺序的积木，这是本页最有辨识度的一块。
    不再是「一个圆角大盒子」：去掉外框与圆角，用细线分隔每一段，
@@ -1718,20 +1731,22 @@ textarea.text-edit:focus-visible {
   margin: 0;
 }
 
-/* ---------- 底部：四块可折叠，平时只占一行 ---------- */
+/* ---------- 底部：只剩「导入」，平时一行 ---------- */
+/* 原来是四块等宽折叠区，标题长短不一、位置对不齐，看着像没排过。
+   现在「校验记录」只在真有拒绝项时出现，「最近一次生效」并进了右栏标题行，
+   「边界」的说明在 README 里——底部就一条，左对齐，不再等分。 */
 .foot {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px 24px;
-  margin-top: 30px;
-  padding-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin-top: 28px;
+  padding-top: 14px;
   border-top: 1px solid var(--line);
   align-items: start;
 }
-.fold { min-width: 0; }
-/* 展开的那块占满整行：折叠态是一排等宽标题，展开后是表单，
-   挤在 220px 一列里连路径都填不下。 */
-.fold[open] { grid-column: 1 / -1; }
+.fold { min-width: 0; flex: 1 1 auto; }
+/* 展开的那块占满整行：折叠态是标题，展开后是表单，挤在一列里连路径都填不下。 */
+.fold[open] { flex: 1 1 100%; }
 .fold > summary {
   cursor: pointer;
   color: var(--muted);
@@ -1896,23 +1911,9 @@ textarea.text-edit:focus-visible {
     </div>
   </details>
 
-  <details class="fold">
+  <details class="fold" id="rejects-fold" hidden>
     <summary>校验记录 <span class="fold-count" id="rejects-count"></span></summary>
     <div class="fold-body"><ul id="rejects"></ul></div>
-  </details>
-
-  <details class="fold">
-    <summary>最近一次生效</summary>
-    <div class="fold-body"><div id="last" class="stack"></div></div>
-  </details>
-
-  <details class="fold">
-    <summary>边界</summary>
-    <div class="fold-body">
-      <p class="note">只处理经过 magpie 网关的 agent 请求；客户端自己写死的行为、不经过网关的流量改不到。</p>
-      <p class="note"><code>strict</code> 会连原 system 里的工具说明文本一起换掉——结构化工具定义不在网关这一层。</p>
-      <p class="note">页面不读磁盘：条目由插件后端扫描后写成快照，页面只显示它。</p>
-    </div>
   </details>
 </footer>
 
@@ -2296,23 +2297,37 @@ textarea.text-edit:focus-visible {
     }
 
     const BUDGET = 65_536
-    const over = total > BUDGET
-    const footText = over
-      ? `合计 ${total.toLocaleString('zh-CN')} 字符 · 超出预算 ${(total - BUDGET).toLocaleString('zh-CN')}`
-      : `合计 ${total.toLocaleString('zh-CN')} 字符 · 预算 ${BUDGET.toLocaleString('zh-CN')}`
-
     const sub = !personaEntry
       ? '还没有人设：先挑一条人设'
       : plan.ready ? '下一次请求会拼成这段' : '现在不会注入；下面是开启后会拼成的样子'
 
+    // 合计与「上次生效」都搬到标题行：原来压在清单底下，要和比例尺的数字对上眼
+    // 得来回找两次；而底部那块「最近一次生效」折叠区说的也是同一件事。
+    // 协议、模式、段数、跳过原因这些细节放 title，鼠标停上去就有，不再单占一块版面。
+    const lastText = last?.at
+      ? (last.skipped ? `上次 ${fmtTime(last.at)} · 未注入` : `上次 ${fmtTime(last.at)} · ${last.agent || '—'}`)
+      : ''
+    const lastTitle = last?.at
+      ? [
+        fmtTime(last.at),
+        last.agent || '未知 agent',
+        last.protocol || '',
+        last.mode || '',
+        last.skipped
+          ? `未注入：${last.skipped}`
+          : `人设 ${last.persona || '（无）'} · 技能 ${(last.skills || []).length} 条 · 注入 ${last.chars} 字符`,
+        ...(last.missingPin?.length ? [`固定的版本不在当前表里：${last.missingPin.join('、')}`] : []),
+      ].filter(Boolean).join(' · ')
+      : ''
+
     host.replaceChildren(...[
-      el('h2', {}, '注入组装', el('span', { class: 'h2-sub', text: sub })),
+      el('h2', {},
+        '注入组装',
+        el('span', { class: 'h2-sub', text: sub }),
+        lastText ? el('span', { class: 'h2-last', text: lastText, title: lastTitle }) : null,
+      ),
       budgetRuler({ personaEntry, skills, total, budget: BUDGET, dim: !plan.ready }),
       el('div', { class: `stack-view${plan.ready ? '' : ' is-preview'}` }, ...rows),
-      el('div', { class: 'stack-foot' },
-        el('span', { class: over ? 'over' : '', text: footText }),
-        last?.at ? el('span', { text: last.skipped ? `上次 ${fmtTime(last.at)} · 未注入` : `上次 ${fmtTime(last.at)} · ${last.agent || '—'}` }) : null,
-      ),
     ].filter(Boolean))
   }
 
@@ -2364,7 +2379,13 @@ textarea.text-edit:focus-visible {
       track,
       el('div', { class: 'ruler-ticks' },
         el('span', { text: '0' }),
-        el('span', { class: over ? 'over' : '', text: `${total.toLocaleString('zh-CN')} / ${budget.toLocaleString('zh-CN')}` }),
+        // 合计与预算合成一处：原来底部还单列一遍「合计 X 字符 · 预算 Y」，同一组数字说两次。
+        el('span', {
+          class: over ? 'over' : '',
+          text: over
+            ? `${total.toLocaleString('zh-CN')} / ${budget.toLocaleString('zh-CN')} · 超出 ${(total - budget).toLocaleString('zh-CN')}`
+            : `${total.toLocaleString('zh-CN')} / ${budget.toLocaleString('zh-CN')}`,
+        }),
       ),
     )
   }
@@ -2686,38 +2707,15 @@ textarea.text-edit:focus-visible {
     const rows = Array.isArray(catalog?.rejected) ? catalog.rejected : []
     const badge = $('rejects-count')
     if (badge) badge.textContent = rows.length ? `${rows.length}` : ''
+    // 没有拒绝项就整块收起来：平时它只是一行「都认得出来」，白占底部一条。
+    // 真出问题时才出现，并且带数量。
+    const fold = $('rejects-fold')
+    if (fold) fold.hidden = rows.length === 0
     if (!rows.length) {
-      const n = entries().length
-      host.replaceChildren(el('li', {
-        text: n
-          ? '没有拒绝项：现在这些文件都认得出来。'
-          : '还没有扫描结果：导入一份文件，或点一下「导入」区里的按钮触发重扫。',
-      }))
+      host.replaceChildren()
       return
     }
     host.replaceChildren(...rows.slice(0, 24).map((r) => el('li', {}, el('strong', { text: r.name }), `：${r.reason}`)))
-  }
-
-  function renderLast() {
-    const host = $('last')
-    const last = catalog?.last
-    if (!last) {
-      host.replaceChildren(el('p', { class: 'note', text: '还没有请求经过网关。改完模式后，下一次 agent 请求会写下这一行。' }))
-      return
-    }
-    if (last.skipped) {
-      // 放行了也要说清为什么：只显示「没注入」等于什么也没说
-      host.replaceChildren(
-        el('p', { class: 'note', text: `${fmtTime(last.at)} · ${last.agent || '未知 agent'} · ${last.protocol || '—'}` }),
-        el('p', { class: 'warn', text: `这次没有注入：${last.skipped}` }),
-      )
-      return
-    }
-    host.replaceChildren(
-      el('p', { class: 'note', text: `${fmtTime(last.at)} · ${last.agent || '未知 agent'} · ${last.protocol} · ${last.mode}` }),
-      el('p', { class: 'note', text: `人设 ${last.persona || '（无）'} · 技能 ${(last.skills || []).length} 条 · 注入 ${last.chars} 字符` }),
-      ...(last.missingPin?.length ? [el('p', { class: 'warn', text: `固定的版本不在当前表里：${last.missingPin.join('、')}` })] : []),
-    )
   }
 
   function render() {
@@ -2737,7 +2735,6 @@ textarea.text-edit:focus-visible {
     $('assembly').hidden = picked
     $('inspect').hidden = !picked
     renderRejects()
-    renderLast()
   }
 
   /** MODES 是模式下拉的全部取值：没有「跟随上游」这一档，模式必须自己选。 */

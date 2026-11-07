@@ -67,23 +67,9 @@
     </div>
   </details>
 
-  <details class="fold">
+  <details class="fold" id="rejects-fold" hidden>
     <summary>校验记录 <span class="fold-count" id="rejects-count"></span></summary>
     <div class="fold-body"><ul id="rejects"></ul></div>
-  </details>
-
-  <details class="fold">
-    <summary>最近一次生效</summary>
-    <div class="fold-body"><div id="last" class="stack"></div></div>
-  </details>
-
-  <details class="fold">
-    <summary>边界</summary>
-    <div class="fold-body">
-      <p class="note">只处理经过 magpie 网关的 agent 请求；客户端自己写死的行为、不经过网关的流量改不到。</p>
-      <p class="note"><code>strict</code> 会连原 system 里的工具说明文本一起换掉——结构化工具定义不在网关这一层。</p>
-      <p class="note">页面不读磁盘：条目由插件后端扫描后写成快照，页面只显示它。</p>
-    </div>
   </details>
 </footer>
 

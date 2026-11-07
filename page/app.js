@@ -375,23 +375,37 @@
     }
 
     const BUDGET = 65_536
-    const over = total > BUDGET
-    const footText = over
-      ? `合计 ${total.toLocaleString('zh-CN')} 字符 · 超出预算 ${(total - BUDGET).toLocaleString('zh-CN')}`
-      : `合计 ${total.toLocaleString('zh-CN')} 字符 · 预算 ${BUDGET.toLocaleString('zh-CN')}`
-
     const sub = !personaEntry
       ? '还没有人设：先挑一条人设'
       : plan.ready ? '下一次请求会拼成这段' : '现在不会注入；下面是开启后会拼成的样子'
 
+    // 合计与「上次生效」都搬到标题行：原来压在清单底下，要和比例尺的数字对上眼
+    // 得来回找两次；而底部那块「最近一次生效」折叠区说的也是同一件事。
+    // 协议、模式、段数、跳过原因这些细节放 title，鼠标停上去就有，不再单占一块版面。
+    const lastText = last?.at
+      ? (last.skipped ? `上次 ${fmtTime(last.at)} · 未注入` : `上次 ${fmtTime(last.at)} · ${last.agent || '—'}`)
+      : ''
+    const lastTitle = last?.at
+      ? [
+        fmtTime(last.at),
+        last.agent || '未知 agent',
+        last.protocol || '',
+        last.mode || '',
+        last.skipped
+          ? `未注入：${last.skipped}`
+          : `人设 ${last.persona || '（无）'} · 技能 ${(last.skills || []).length} 条 · 注入 ${last.chars} 字符`,
+        ...(last.missingPin?.length ? [`固定的版本不在当前表里：${last.missingPin.join('、')}`] : []),
+      ].filter(Boolean).join(' · ')
+      : ''
+
     host.replaceChildren(...[
-      el('h2', {}, '注入组装', el('span', { class: 'h2-sub', text: sub })),
+      el('h2', {},
+        '注入组装',
+        el('span', { class: 'h2-sub', text: sub }),
+        lastText ? el('span', { class: 'h2-last', text: lastText, title: lastTitle }) : null,
+      ),
       budgetRuler({ personaEntry, skills, total, budget: BUDGET, dim: !plan.ready }),
       el('div', { class: `stack-view${plan.ready ? '' : ' is-preview'}` }, ...rows),
-      el('div', { class: 'stack-foot' },
-        el('span', { class: over ? 'over' : '', text: footText }),
-        last?.at ? el('span', { text: last.skipped ? `上次 ${fmtTime(last.at)} · 未注入` : `上次 ${fmtTime(last.at)} · ${last.agent || '—'}` }) : null,
-      ),
     ].filter(Boolean))
   }
 
@@ -443,7 +457,13 @@
       track,
       el('div', { class: 'ruler-ticks' },
         el('span', { text: '0' }),
-        el('span', { class: over ? 'over' : '', text: `${total.toLocaleString('zh-CN')} / ${budget.toLocaleString('zh-CN')}` }),
+        // 合计与预算合成一处：原来底部还单列一遍「合计 X 字符 · 预算 Y」，同一组数字说两次。
+        el('span', {
+          class: over ? 'over' : '',
+          text: over
+            ? `${total.toLocaleString('zh-CN')} / ${budget.toLocaleString('zh-CN')} · 超出 ${(total - budget).toLocaleString('zh-CN')}`
+            : `${total.toLocaleString('zh-CN')} / ${budget.toLocaleString('zh-CN')}`,
+        }),
       ),
     )
   }
@@ -765,38 +785,15 @@
     const rows = Array.isArray(catalog?.rejected) ? catalog.rejected : []
     const badge = $('rejects-count')
     if (badge) badge.textContent = rows.length ? `${rows.length}` : ''
+    // 没有拒绝项就整块收起来：平时它只是一行「都认得出来」，白占底部一条。
+    // 真出问题时才出现，并且带数量。
+    const fold = $('rejects-fold')
+    if (fold) fold.hidden = rows.length === 0
     if (!rows.length) {
-      const n = entries().length
-      host.replaceChildren(el('li', {
-        text: n
-          ? '没有拒绝项：现在这些文件都认得出来。'
-          : '还没有扫描结果：导入一份文件，或点一下「导入」区里的按钮触发重扫。',
-      }))
+      host.replaceChildren()
       return
     }
     host.replaceChildren(...rows.slice(0, 24).map((r) => el('li', {}, el('strong', { text: r.name }), `：${r.reason}`)))
-  }
-
-  function renderLast() {
-    const host = $('last')
-    const last = catalog?.last
-    if (!last) {
-      host.replaceChildren(el('p', { class: 'note', text: '还没有请求经过网关。改完模式后，下一次 agent 请求会写下这一行。' }))
-      return
-    }
-    if (last.skipped) {
-      // 放行了也要说清为什么：只显示「没注入」等于什么也没说
-      host.replaceChildren(
-        el('p', { class: 'note', text: `${fmtTime(last.at)} · ${last.agent || '未知 agent'} · ${last.protocol || '—'}` }),
-        el('p', { class: 'warn', text: `这次没有注入：${last.skipped}` }),
-      )
-      return
-    }
-    host.replaceChildren(
-      el('p', { class: 'note', text: `${fmtTime(last.at)} · ${last.agent || '未知 agent'} · ${last.protocol} · ${last.mode}` }),
-      el('p', { class: 'note', text: `人设 ${last.persona || '（无）'} · 技能 ${(last.skills || []).length} 条 · 注入 ${last.chars} 字符` }),
-      ...(last.missingPin?.length ? [el('p', { class: 'warn', text: `固定的版本不在当前表里：${last.missingPin.join('、')}` })] : []),
-    )
   }
 
   function render() {
@@ -816,7 +813,6 @@
     $('assembly').hidden = picked
     $('inspect').hidden = !picked
     renderRejects()
-    renderLast()
   }
 
   /** MODES 是模式下拉的全部取值：没有「跟随上游」这一档，模式必须自己选。 */
