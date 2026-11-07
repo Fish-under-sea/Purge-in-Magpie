@@ -317,7 +317,9 @@
       el('span', { class: 'spine', style: `--spine:var(--kind-${kindClass(e.kind)})` }),
       el('span', {},
         el('span', { class: 'title', text: e.name }),
-        el('span', { class: 'meta', text: `${kind.label} · ${e.builtin ? '随插件' : e.source?.rel ?? ''}` }),
+        // 内置条目只说类型：它们全是随插件来的，再标一遍「随插件」等于每行重复同一句话。
+        // 导入的才需要文件名，那是唯一能区分同名条目的信息。
+        el('span', { class: 'meta', text: e.builtin ? kind.label : `${kind.label} · ${e.source?.rel ?? ''}` }),
       ),
       // 右侧一列：状态徽标 + 「查看」。徽标原来是跟在名字后面的，
       // 名字长短不一时它左右乱跳；挪到右边固定位置，一列扫下去就能看出谁没启用。
