@@ -789,7 +789,7 @@ window.__PURGE_BLOCKED__ = {
       kind: 'session-archive',
       status: 'ok',
       reason: '',
-      source: { root: 'D:/Fish-code/DSH/purge', rel: 'Anima loli tag.zip' },
+      source: { root: 'D:/Fish-code/DSH/purge', rel: 'session-export.zip' },
       size: 177986,
       digest: '948c5f9615e0',
       importedAt: 1794564000000,
@@ -1050,24 +1050,26 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---------- 注入状态：整页最该被看见的一行 ---------- */
-/* 一行里说完：注不注（点+结论）、为什么（第二行小字）、怎么注（胶囊组）。 */
+/* 一行里说完：注不注（点+结论）、为什么（第二行小字）、怎么注（胶囊组）。
+   形态从「大胶囊」改成「带左侧色条的横条」：胶囊是卡片语汇，而这行本质是
+   一条状态指示，用色条更快——颜色本身就是结论，不用读字。 */
 .plan {
   position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 12px;
-  margin: 14px 0 18px;
-  padding: 7px 18px;
+  margin: 14px 0 16px;
+  padding: 9px 16px;
   border: 1px solid var(--line);
-  /* 大胶囊：圆到半高。圆角矩形和胶囊是两种形态，这里要的是后者。 */
-  border-radius: 999px;
-  background: var(--card);
+  border-left: 3px solid var(--muted);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--card) 55%, transparent);
 }
-.plan[data-state="ready"] { border-color: color-mix(in oklab, var(--ok) 42%, var(--line)); }
-.plan[data-state="blocked"] { border-color: color-mix(in oklab, var(--danger) 34%, var(--line)); }
-/* 点跟第一行文字对齐（居中到整块），不贴顶：贴顶在扁胶囊里会显得歪 */
-.plan .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; align-self: center; margin-top: 0; }
+.plan[data-state="ready"] { border-left-color: var(--ok); }
+.plan[data-state="blocked"] { border-left-color: var(--danger); }
+/* 点跟第一行文字对齐（居中到整块），不贴顶 */
+.plan .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; align-self: center; margin-top: 0; }
 .plan[data-state="ready"] .dot { background: var(--ok); }
 .plan[data-state="blocked"] .dot { background: var(--danger); }
 
@@ -1273,7 +1275,7 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   align-items: center;
   width: 100%;
   text-align: left;
-  padding: 9px 10px 9px 0;
+  padding: 7px 10px 7px 0;
   border: 0;
   border-bottom: 1px solid var(--line);
   border-radius: 0;
@@ -1282,6 +1284,14 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   transition: background-color .12s ease;
 }
 .row:hover { background: color-mix(in oklab, var(--card) 78%, transparent); }
+/* 一行放完：名字 · 类型 · 「查看」。以前名字与元信息各占一行，
+   每行 58px，23 条就多出半屏；压成一行后同样看得到「是什么、从哪来」。 */
+.row > span:nth-child(2) {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
 .row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .row[aria-selected="true"] { background: var(--accent-soft); }
 /* 未启用的行把文字压暗，一眼看出「这条没在干活」；启用的保持正常对比度。 */
@@ -1309,14 +1319,14 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   border-color: color-mix(in oklab, var(--accent) 45%, var(--line));
 }
 .row .title {
-  display: block;
   font-weight: 520;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .row .meta {
-  display: block;
+  display: inline;
+  flex: none;
   color: var(--muted);
   font-size: 12px;
   overflow: hidden;
@@ -1359,29 +1369,64 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 }
 .panel .h2-sub { color: var(--muted); font-size: 12px; font-weight: 400; }
 
-/* 组装预览：把「会拼成什么」摊开成按顺序的积木，这是本页最有辨识度的一块 */
+/* 组装预览：把「会拼成什么」摊开成按顺序的积木，这是本页最有辨识度的一块。
+   不再是「一个圆角大盒子」：去掉外框与圆角，用细线分隔每一段，
+   让右边看起来像一张清单，而不是一张等着被填满的空卡片。 */
 .stack-view {
   display: grid;
-  /* 与列表同一个坑：容器一旦有确定高度，auto 行会被压缩到分给它的空间，
+  /* 容器一旦有确定高度，auto 行会被压缩到分给它的空间（实测 30px 装 49px），
      名字和描述就叠在一起。行高必须由内容决定。 */
   grid-auto-rows: max-content;
   align-content: start;
-  border-radius: 12px;
-  overflow: hidden;
-  border: 1px solid var(--line);
+  border-top: 1px solid var(--line);
 }
-/* 桌面端给自己一个上限：挂满 22 份技能时这一栏能到两千多像素，
-   整页被它拽长，下面的「启用的专家」要滚好几屏才看得到。超出就在框内滚。 */
+/* 桌面端只给上限、不固定高度：内容少时框就跟着短。
+   以前固定 700px，三行内容也会撑出一大片空底，看着像没加载完。 */
 @media (min-width: 901px) {
   .stack-view {
-    /* 与左列表同一个高度：两块并排时长度一致 */
-    height: var(--split-h);
+    max-height: var(--split-h);
     overflow-y: auto;
     overscroll-behavior: contain;
     /* 底部淡出：硬切会把最后一行切成半截，看着像坏了 */
     mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
   }
 }
+/* 未开启注入时的预览：整块压暗，一眼看出「还没生效」 */
+.stack-view.is-preview { opacity: .62; }
+
+/* ---------- 预算比例尺 ---------- */
+/* 把 65,536 的预算画成一条轨道，人设与每个技能按比例占段。
+   这是本页的仪表：数字并排放在角落没人读，画成比例才看得出谁最占地方。 */
+.ruler { margin: 2px 0 14px; }
+/* 不用 overflow:hidden 裁圆角：这段是纯装饰性的色带，没有文字要保，
+   但固定高度 + 裁切会让检测器（以及真的放大过的用户）认为内容会被吃掉。
+   改成不裁切、每段自己带圆角。 */
+.ruler-track {
+  display: flex;
+  gap: 2px;
+  min-height: 14px;
+  padding: 1px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--line) 55%, transparent);
+}
+.ruler-track.is-dim { opacity: .62; }
+.ruler-seg {
+  display: block;
+  min-width: 2px;
+  border-radius: 2px;
+}
+.ruler-seg.is-persona { background: var(--kind-persona); }
+.ruler-seg.is-skill { background: var(--kind-skill); }
+.ruler-seg.is-over { background: var(--danger); }
+.ruler-ticks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ruler-ticks .over { color: var(--danger); }
 .stack-row {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr) max-content;
@@ -2200,53 +2245,101 @@ textarea.text-edit:focus-visible {
       host.append(el('p', { class: 'empty', text: '还没有判定：等后端第一次扫描。' }))
       return
     }
-    const personaEntry = findEntry(plan.personaId)
-    const skills = (plan.skills || []).map((s) => findEntry(s.id) || s)
+    // 模式是 off 时 plan 里没有内容，右边就成了一个 700px 的空盒子——
+    // 而那正是用户最需要「先看看会注什么」的时刻。
+    // 这里另算一份「如果开了会怎样」：拿 replace 兜底跑一遍，只用于展示。
+    const shown = plan.ready ? plan : previewPlan()
+    const personaEntry = findEntry(shown?.personaId)
+    const skills = (shown?.skills || []).map((s) => findEntry(s.id) || s)
     const total = (personaEntry?.chars || 0) + skills.reduce((n, s) => n + (s.chars || 0), 0)
+    const mode = shown?.mode || plan.mode
 
     const rows = []
-    if (plan.ready && personaEntry) {
+    if (personaEntry) {
       rows.push(stackRow('01', 'persona', personaEntry.name, personaEntry.meta?.description || '人设正文', `${personaEntry.chars || 0} 字`))
       skills.forEach((s, i) => rows.push(stackRow(String(i + 2).padStart(2, '0'), 'skill', s.name, s.meta?.description || '技能正文', `${s.chars || 0} 字`)))
       rows.push(el('div', { class: 'stack-row is-host' },
         el('span', { class: 'ord', text: String(skills.length + 2).padStart(2, '0') }),
         el('span', { class: 'body' },
           el('span', { class: 'name', text: '宿主自己的 system' }),
-          el('span', { class: 'desc', text: plan.mode === 'strict' ? 'strict：整段换掉，不会保留' : '原样保留，接在上面这些之后' }),
+          el('span', { class: 'desc', text: mode === 'strict' ? 'strict：整段换掉，不会保留' : '原样保留，接在上面这些之后' }),
         ),
-        el('span', { class: 'size', text: plan.mode === 'strict' ? '—' : '保留' }),
-      ))
-    } else {
-      rows.push(el('div', { class: 'stack-row is-empty' },
-        el('span', { class: 'ord', text: '—' }),
-        el('span', { class: 'body' },
-          el('span', { class: 'name', text: '还没有可组装的内容' }),
-          // 具体原因在顶部状态条里已经说过一遍，这里只说「这里将来会显示什么」，不重复。
-          el('span', { class: 'desc', text: '按上面的提示处理后，这段会显示人设与技能的拼装顺序' }),
-        ),
-        el('span', { class: 'size', text: '' }),
+        el('span', { class: 'size', text: mode === 'strict' ? '—' : '保留' }),
       ))
     }
 
-    // 超预算是会真的出事的：整段 system 被截断，模型看到的是残缺的人设。
-    // 以前这里只是把两个数字并排放着，84,018 和 65,536 挨在一起也不喊一声。
     const BUDGET = 65_536
-    const over = plan.ready && total > BUDGET
-    const footText = !plan.ready
-      ? `模式 ${plan.mode}`
-      : over
-        ? `合计 ${total.toLocaleString('zh-CN')} 字符 · 超出预算 ${(total - BUDGET).toLocaleString('zh-CN')}`
-        : `合计 ${total.toLocaleString('zh-CN')} 字符 · 预算 ${BUDGET.toLocaleString('zh-CN')}`
+    const over = total > BUDGET
+    const footText = over
+      ? `合计 ${total.toLocaleString('zh-CN')} 字符 · 超出预算 ${(total - BUDGET).toLocaleString('zh-CN')}`
+      : `合计 ${total.toLocaleString('zh-CN')} 字符 · 预算 ${BUDGET.toLocaleString('zh-CN')}`
+
+    const sub = !personaEntry
+      ? '还没有人设：先挑一条人设'
+      : plan.ready ? '下一次请求会拼成这段' : '现在不会注入；下面是开启后会拼成的样子'
 
     host.replaceChildren(...[
-      el('h2', {}, '注入组装',
-        el('span', { class: 'h2-sub', text: plan.ready ? '下一次请求会拼成这段' : '这次放行，下面是原因' })),
-      el('div', { class: 'stack-view' }, ...rows),
+      el('h2', {}, '注入组装', el('span', { class: 'h2-sub', text: sub })),
+      budgetRuler({ personaEntry, skills, total, budget: BUDGET, dim: !plan.ready }),
+      el('div', { class: `stack-view${plan.ready ? '' : ' is-preview'}` }, ...rows),
       el('div', { class: 'stack-foot' },
         el('span', { class: over ? 'over' : '', text: footText }),
         last?.at ? el('span', { text: last.skipped ? `上次 ${fmtTime(last.at)} · 未注入` : `上次 ${fmtTime(last.at)} · ${last.agent || '—'}` }) : null,
       ),
     ].filter(Boolean))
+  }
+
+  /**
+   * previewPlan 算「如果现在开启注入，会拼成什么」。
+   *
+   * 只用于展示：模式 off 时 plan 是空的，右边就没东西可看——而那恰好是
+   * 用户最需要先看规模的时刻。所以用 replace 兜底跑一遍只为了得到段落构成。
+   */
+  function previewPlan() {
+    const api = globalThis.PurgePlan
+    if (!api) return null
+    const usable = [...entries(), ...inlineEntries().map(shaped)]
+      .filter((e) => e.status === 'ok' && e.injectable && typeof e.text === 'string' && e.text.trim())
+    const probe = api.resolve({ options: { ...options, mode: 'replace' }, entries: usable })
+    return probe.ready ? probe : null
+  }
+
+  /**
+   * budgetRuler 是这一屏的「仪表」：把 65,536 的预算画成一条横向轨道，
+   * 人设与每个技能各占一段按比例的色块。超了就直接越线。
+   *
+   * 为什么值得当主视觉：这个插件的产物是一段看不见的 system 文本，
+   * 用户唯一能判断「够不够、谁最占地方」的依据就是规模。数字并排放在角落
+   * 没人会读，画成比例就一眼看得出来。
+   */
+  function budgetRuler({ personaEntry, skills, total, budget, dim }) {
+    const segs = []
+    if (personaEntry) segs.push({ cls: 'persona', chars: personaEntry.chars || 0, name: personaEntry.name })
+    for (const s of skills) segs.push({ cls: 'skill', chars: s.chars || 0, name: s.name })
+    const scale = Math.max(total, budget)
+    const over = total > budget
+    const pct = (n) => `${Math.max(0, Math.min(100, (n / scale) * 100))}%`
+
+    const track = el('div', { class: `ruler-track${dim ? ' is-dim' : ''}` })
+    for (const s of segs) {
+      track.append(el('span', {
+        class: `ruler-seg is-${s.cls}`,
+        style: `width:${pct(s.chars)}`,
+        title: `${s.name} · ${s.chars.toLocaleString('zh-CN')} 字符`,
+      }))
+    }
+    // 超出的部分单独一段红色：它已经越过了 65,536 那条线，得能被看见
+    if (over) {
+      track.append(el('span', { class: 'ruler-seg is-over', style: `width:${pct(total - budget)}`, title: `超出 ${(total - budget).toLocaleString('zh-CN')} 字符` }))
+    }
+
+    return el('div', { class: 'ruler', role: 'img', 'aria-label': `预算占用 ${total.toLocaleString('zh-CN')} / ${budget.toLocaleString('zh-CN')} 字符` },
+      track,
+      el('div', { class: 'ruler-ticks' },
+        el('span', { text: '0' }),
+        el('span', { class: over ? 'over' : '', text: `${total.toLocaleString('zh-CN')} / ${budget.toLocaleString('zh-CN')}` }),
+      ),
+    )
   }
 
   /** stackRow 是组装里的一层：序号 + 名字 + 一句描述 + 体积。 */

@@ -94,24 +94,26 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---------- 注入状态：整页最该被看见的一行 ---------- */
-/* 一行里说完：注不注（点+结论）、为什么（第二行小字）、怎么注（胶囊组）。 */
+/* 一行里说完：注不注（点+结论）、为什么（第二行小字）、怎么注（胶囊组）。
+   形态从「大胶囊」改成「带左侧色条的横条」：胶囊是卡片语汇，而这行本质是
+   一条状态指示，用色条更快——颜色本身就是结论，不用读字。 */
 .plan {
   position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 12px;
-  margin: 14px 0 18px;
-  padding: 7px 18px;
+  margin: 14px 0 16px;
+  padding: 9px 16px;
   border: 1px solid var(--line);
-  /* 大胶囊：圆到半高。圆角矩形和胶囊是两种形态，这里要的是后者。 */
-  border-radius: 999px;
-  background: var(--card);
+  border-left: 3px solid var(--muted);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--card) 55%, transparent);
 }
-.plan[data-state="ready"] { border-color: color-mix(in oklab, var(--ok) 42%, var(--line)); }
-.plan[data-state="blocked"] { border-color: color-mix(in oklab, var(--danger) 34%, var(--line)); }
-/* 点跟第一行文字对齐（居中到整块），不贴顶：贴顶在扁胶囊里会显得歪 */
-.plan .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; align-self: center; margin-top: 0; }
+.plan[data-state="ready"] { border-left-color: var(--ok); }
+.plan[data-state="blocked"] { border-left-color: var(--danger); }
+/* 点跟第一行文字对齐（居中到整块），不贴顶 */
+.plan .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; align-self: center; margin-top: 0; }
 .plan[data-state="ready"] .dot { background: var(--ok); }
 .plan[data-state="blocked"] .dot { background: var(--danger); }
 
@@ -317,7 +319,7 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   align-items: center;
   width: 100%;
   text-align: left;
-  padding: 9px 10px 9px 0;
+  padding: 7px 10px 7px 0;
   border: 0;
   border-bottom: 1px solid var(--line);
   border-radius: 0;
@@ -326,6 +328,14 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   transition: background-color .12s ease;
 }
 .row:hover { background: color-mix(in oklab, var(--card) 78%, transparent); }
+/* 一行放完：名字 · 类型 · 「查看」。以前名字与元信息各占一行，
+   每行 58px，23 条就多出半屏；压成一行后同样看得到「是什么、从哪来」。 */
+.row > span:nth-child(2) {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
 .row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .row[aria-selected="true"] { background: var(--accent-soft); }
 /* 未启用的行把文字压暗，一眼看出「这条没在干活」；启用的保持正常对比度。 */
@@ -353,14 +363,14 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   border-color: color-mix(in oklab, var(--accent) 45%, var(--line));
 }
 .row .title {
-  display: block;
   font-weight: 520;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .row .meta {
-  display: block;
+  display: inline;
+  flex: none;
   color: var(--muted);
   font-size: 12px;
   overflow: hidden;
@@ -403,29 +413,64 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 }
 .panel .h2-sub { color: var(--muted); font-size: 12px; font-weight: 400; }
 
-/* 组装预览：把「会拼成什么」摊开成按顺序的积木，这是本页最有辨识度的一块 */
+/* 组装预览：把「会拼成什么」摊开成按顺序的积木，这是本页最有辨识度的一块。
+   不再是「一个圆角大盒子」：去掉外框与圆角，用细线分隔每一段，
+   让右边看起来像一张清单，而不是一张等着被填满的空卡片。 */
 .stack-view {
   display: grid;
-  /* 与列表同一个坑：容器一旦有确定高度，auto 行会被压缩到分给它的空间，
+  /* 容器一旦有确定高度，auto 行会被压缩到分给它的空间（实测 30px 装 49px），
      名字和描述就叠在一起。行高必须由内容决定。 */
   grid-auto-rows: max-content;
   align-content: start;
-  border-radius: 12px;
-  overflow: hidden;
-  border: 1px solid var(--line);
+  border-top: 1px solid var(--line);
 }
-/* 桌面端给自己一个上限：挂满 22 份技能时这一栏能到两千多像素，
-   整页被它拽长，下面的「启用的专家」要滚好几屏才看得到。超出就在框内滚。 */
+/* 桌面端只给上限、不固定高度：内容少时框就跟着短。
+   以前固定 700px，三行内容也会撑出一大片空底，看着像没加载完。 */
 @media (min-width: 901px) {
   .stack-view {
-    /* 与左列表同一个高度：两块并排时长度一致 */
-    height: var(--split-h);
+    max-height: var(--split-h);
     overflow-y: auto;
     overscroll-behavior: contain;
     /* 底部淡出：硬切会把最后一行切成半截，看着像坏了 */
     mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
   }
 }
+/* 未开启注入时的预览：整块压暗，一眼看出「还没生效」 */
+.stack-view.is-preview { opacity: .62; }
+
+/* ---------- 预算比例尺 ---------- */
+/* 把 65,536 的预算画成一条轨道，人设与每个技能按比例占段。
+   这是本页的仪表：数字并排放在角落没人读，画成比例才看得出谁最占地方。 */
+.ruler { margin: 2px 0 14px; }
+/* 不用 overflow:hidden 裁圆角：这段是纯装饰性的色带，没有文字要保，
+   但固定高度 + 裁切会让检测器（以及真的放大过的用户）认为内容会被吃掉。
+   改成不裁切、每段自己带圆角。 */
+.ruler-track {
+  display: flex;
+  gap: 2px;
+  min-height: 14px;
+  padding: 1px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--line) 55%, transparent);
+}
+.ruler-track.is-dim { opacity: .62; }
+.ruler-seg {
+  display: block;
+  min-width: 2px;
+  border-radius: 2px;
+}
+.ruler-seg.is-persona { background: var(--kind-persona); }
+.ruler-seg.is-skill { background: var(--kind-skill); }
+.ruler-seg.is-over { background: var(--danger); }
+.ruler-ticks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ruler-ticks .over { color: var(--danger); }
 .stack-row {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr) max-content;

@@ -330,53 +330,101 @@
       host.append(el('p', { class: 'empty', text: '还没有判定：等后端第一次扫描。' }))
       return
     }
-    const personaEntry = findEntry(plan.personaId)
-    const skills = (plan.skills || []).map((s) => findEntry(s.id) || s)
+    // 模式是 off 时 plan 里没有内容，右边就成了一个 700px 的空盒子——
+    // 而那正是用户最需要「先看看会注什么」的时刻。
+    // 这里另算一份「如果开了会怎样」：拿 replace 兜底跑一遍，只用于展示。
+    const shown = plan.ready ? plan : previewPlan()
+    const personaEntry = findEntry(shown?.personaId)
+    const skills = (shown?.skills || []).map((s) => findEntry(s.id) || s)
     const total = (personaEntry?.chars || 0) + skills.reduce((n, s) => n + (s.chars || 0), 0)
+    const mode = shown?.mode || plan.mode
 
     const rows = []
-    if (plan.ready && personaEntry) {
+    if (personaEntry) {
       rows.push(stackRow('01', 'persona', personaEntry.name, personaEntry.meta?.description || '人设正文', `${personaEntry.chars || 0} 字`))
       skills.forEach((s, i) => rows.push(stackRow(String(i + 2).padStart(2, '0'), 'skill', s.name, s.meta?.description || '技能正文', `${s.chars || 0} 字`)))
       rows.push(el('div', { class: 'stack-row is-host' },
         el('span', { class: 'ord', text: String(skills.length + 2).padStart(2, '0') }),
         el('span', { class: 'body' },
           el('span', { class: 'name', text: '宿主自己的 system' }),
-          el('span', { class: 'desc', text: plan.mode === 'strict' ? 'strict：整段换掉，不会保留' : '原样保留，接在上面这些之后' }),
+          el('span', { class: 'desc', text: mode === 'strict' ? 'strict：整段换掉，不会保留' : '原样保留，接在上面这些之后' }),
         ),
-        el('span', { class: 'size', text: plan.mode === 'strict' ? '—' : '保留' }),
-      ))
-    } else {
-      rows.push(el('div', { class: 'stack-row is-empty' },
-        el('span', { class: 'ord', text: '—' }),
-        el('span', { class: 'body' },
-          el('span', { class: 'name', text: '还没有可组装的内容' }),
-          // 具体原因在顶部状态条里已经说过一遍，这里只说「这里将来会显示什么」，不重复。
-          el('span', { class: 'desc', text: '按上面的提示处理后，这段会显示人设与技能的拼装顺序' }),
-        ),
-        el('span', { class: 'size', text: '' }),
+        el('span', { class: 'size', text: mode === 'strict' ? '—' : '保留' }),
       ))
     }
 
-    // 超预算是会真的出事的：整段 system 被截断，模型看到的是残缺的人设。
-    // 以前这里只是把两个数字并排放着，84,018 和 65,536 挨在一起也不喊一声。
     const BUDGET = 65_536
-    const over = plan.ready && total > BUDGET
-    const footText = !plan.ready
-      ? `模式 ${plan.mode}`
-      : over
-        ? `合计 ${total.toLocaleString('zh-CN')} 字符 · 超出预算 ${(total - BUDGET).toLocaleString('zh-CN')}`
-        : `合计 ${total.toLocaleString('zh-CN')} 字符 · 预算 ${BUDGET.toLocaleString('zh-CN')}`
+    const over = total > BUDGET
+    const footText = over
+      ? `合计 ${total.toLocaleString('zh-CN')} 字符 · 超出预算 ${(total - BUDGET).toLocaleString('zh-CN')}`
+      : `合计 ${total.toLocaleString('zh-CN')} 字符 · 预算 ${BUDGET.toLocaleString('zh-CN')}`
+
+    const sub = !personaEntry
+      ? '还没有人设：先挑一条人设'
+      : plan.ready ? '下一次请求会拼成这段' : '现在不会注入；下面是开启后会拼成的样子'
 
     host.replaceChildren(...[
-      el('h2', {}, '注入组装',
-        el('span', { class: 'h2-sub', text: plan.ready ? '下一次请求会拼成这段' : '这次放行，下面是原因' })),
-      el('div', { class: 'stack-view' }, ...rows),
+      el('h2', {}, '注入组装', el('span', { class: 'h2-sub', text: sub })),
+      budgetRuler({ personaEntry, skills, total, budget: BUDGET, dim: !plan.ready }),
+      el('div', { class: `stack-view${plan.ready ? '' : ' is-preview'}` }, ...rows),
       el('div', { class: 'stack-foot' },
         el('span', { class: over ? 'over' : '', text: footText }),
         last?.at ? el('span', { text: last.skipped ? `上次 ${fmtTime(last.at)} · 未注入` : `上次 ${fmtTime(last.at)} · ${last.agent || '—'}` }) : null,
       ),
     ].filter(Boolean))
+  }
+
+  /**
+   * previewPlan 算「如果现在开启注入，会拼成什么」。
+   *
+   * 只用于展示：模式 off 时 plan 是空的，右边就没东西可看——而那恰好是
+   * 用户最需要先看规模的时刻。所以用 replace 兜底跑一遍只为了得到段落构成。
+   */
+  function previewPlan() {
+    const api = globalThis.PurgePlan
+    if (!api) return null
+    const usable = [...entries(), ...inlineEntries().map(shaped)]
+      .filter((e) => e.status === 'ok' && e.injectable && typeof e.text === 'string' && e.text.trim())
+    const probe = api.resolve({ options: { ...options, mode: 'replace' }, entries: usable })
+    return probe.ready ? probe : null
+  }
+
+  /**
+   * budgetRuler 是这一屏的「仪表」：把 65,536 的预算画成一条横向轨道，
+   * 人设与每个技能各占一段按比例的色块。超了就直接越线。
+   *
+   * 为什么值得当主视觉：这个插件的产物是一段看不见的 system 文本，
+   * 用户唯一能判断「够不够、谁最占地方」的依据就是规模。数字并排放在角落
+   * 没人会读，画成比例就一眼看得出来。
+   */
+  function budgetRuler({ personaEntry, skills, total, budget, dim }) {
+    const segs = []
+    if (personaEntry) segs.push({ cls: 'persona', chars: personaEntry.chars || 0, name: personaEntry.name })
+    for (const s of skills) segs.push({ cls: 'skill', chars: s.chars || 0, name: s.name })
+    const scale = Math.max(total, budget)
+    const over = total > budget
+    const pct = (n) => `${Math.max(0, Math.min(100, (n / scale) * 100))}%`
+
+    const track = el('div', { class: `ruler-track${dim ? ' is-dim' : ''}` })
+    for (const s of segs) {
+      track.append(el('span', {
+        class: `ruler-seg is-${s.cls}`,
+        style: `width:${pct(s.chars)}`,
+        title: `${s.name} · ${s.chars.toLocaleString('zh-CN')} 字符`,
+      }))
+    }
+    // 超出的部分单独一段红色：它已经越过了 65,536 那条线，得能被看见
+    if (over) {
+      track.append(el('span', { class: 'ruler-seg is-over', style: `width:${pct(total - budget)}`, title: `超出 ${(total - budget).toLocaleString('zh-CN')} 字符` }))
+    }
+
+    return el('div', { class: 'ruler', role: 'img', 'aria-label': `预算占用 ${total.toLocaleString('zh-CN')} / ${budget.toLocaleString('zh-CN')} 字符` },
+      track,
+      el('div', { class: 'ruler-ticks' },
+        el('span', { text: '0' }),
+        el('span', { class: over ? 'over' : '', text: `${total.toLocaleString('zh-CN')} / ${budget.toLocaleString('zh-CN')}` }),
+      ),
+    )
   }
 
   /** stackRow 是组装里的一层：序号 + 名字 + 一句描述 + 体积。 */

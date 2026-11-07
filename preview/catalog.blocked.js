@@ -16,7 +16,7 @@ window.PURGE_CATALOG = {
       kind: 'session-archive',
       status: 'ok',
       reason: '',
-      source: { root: 'D:/Fish-code/DSH/purge', rel: 'Anima loli tag.zip' },
+      source: { root: 'D:/Fish-code/DSH/purge', rel: 'session-export.zip' },
       size: 177986,
       digest: '948c5f9615e0',
       importedAt: 1794564000000,
