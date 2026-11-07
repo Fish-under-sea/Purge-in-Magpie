@@ -42,6 +42,8 @@
   let catalog = window.PURGE_CATALOG ?? null
   let selected = ''
   let query = ''
+  /** 折起来的分组（按 kind 记）。只存在内存里：这是当次浏览的临时状态，不值得写进 options。 */
+  const collapsedGroups = new Set()
   let saveTimer = 0
   let pendingSave = null
   let busy = false
@@ -249,11 +251,22 @@
     // 逐行重算会把 resolve 跑 23 遍，纯属浪费。
     const effectivePersona = currentPlan()?.personaId || ''
     for (const group of groups) {
-      nodes.push(el('div', { class: 'group-head', 'data-kind': group.kind },
-        el('span', { text: group.label }),
-        el('span', { class: 'n', text: String(group.rows.length) }),
-      ))
-      for (const e of group.rows) nodes.push(rowOf(e, effectivePersona))
+      // 每一节可以折叠：技能有 23 条时，只想看人设的人不用滚过一整列。
+      // 折叠状态记在内存里，重画（点开关、改模式）之后保持原样。
+      const det = el('details', { class: 'group', 'data-kind': group.kind })
+      det.open = !collapsedGroups.has(group.kind)
+      det.append(
+        el('summary', { class: 'group-head' },
+          el('span', { class: 'group-name', text: group.label }),
+          el('span', { class: 'n', text: String(group.rows.length) }),
+        ),
+        ...group.rows.map((e) => rowOf(e, effectivePersona)),
+      )
+      det.addEventListener('toggle', () => {
+        if (det.open) collapsedGroups.delete(group.kind)
+        else collapsedGroups.add(group.kind)
+      })
+      nodes.push(det)
     }
     // 移除是「从候选里拿掉」，不是删文件；入口留在这儿，否则移掉一条就再也找不回来。
     const removedIds = Object.keys(options.removed || {}).filter((id) => options.removed[id] === true)

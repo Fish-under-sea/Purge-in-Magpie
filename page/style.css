@@ -268,7 +268,9 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   color: var(--muted);
 }
 .chip[aria-pressed="true"] { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
-.rail-count { margin: 12px 0 8px; color: var(--muted); font-size: 12px; }
+/* 上下留白让它和右栏的比例尺刻度落在同一行：两栏顶上都是「数字行」，
+   一个说条数、一个说字符量，位置错开看着就是没排过。 */
+.rail-count { margin: 22px 0 14px; color: var(--muted); font-size: 12px; line-height: 19px; }
 
 /* max-content：行高必须由内容决定。
    默认的 auto 在「容器有确定高度」时会被压到分给它的空间（实测 30px 装 49px 内容），
@@ -318,7 +320,10 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   }
   .list:has(> .row:last-child:first-child) { mask-image: none; }
 }
-.group-head {
+/* 分节标题：既是类型标签，也是折叠开关。
+   做成 sticky——23 条技能滚到一半时，抬头还能看见自己在哪一节。 */
+.group { min-width: 0; }
+.group > .group-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -326,11 +331,34 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   padding: 14px 2px 6px;
   font-size: 12px;
   color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
 }
+.group > .group-head::-webkit-details-marker { display: none; }
+.group > .group-head::after {
+  content: "";
+  width: 0;
+  height: 0;
+  margin-left: 6px;
+  border-top: 4px solid currentColor;
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  transform: rotate(-90deg);
+  transition: transform .12s ease;
+  flex: none;
+}
+.group[open] > .group-head::after { transform: none; }
+.group > .group-head:hover { color: var(--ink); }
+.group > .group-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+.group-head .group-name { flex: 1 1 auto; min-width: 0; }
 .group-head:first-child { padding-top: 8px; }
-.group-head .n { font-variant-numeric: tabular-nums; }
+.group-head .n { font-variant-numeric: tabular-nums; flex: none; }
 /* 被「去看人设」定位到的那一节闪一下：单纯滚过去，眼睛未必跟得上 */
-.group-head.is-flash { color: var(--accent); transition: color .2s ease; }
+.group-head.is-flash { color: var(--accent); }
 
 /* 一行就是一张卡：点行本身做它最主要的事，右侧「查看」进详情。
    行是 div 而不是 button——里面还嵌着一个「查看」按钮，button 套 button 不合法。 */
