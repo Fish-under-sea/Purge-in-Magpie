@@ -358,12 +358,22 @@
       ))
     }
 
+    // 超预算是会真的出事的：整段 system 被截断，模型看到的是残缺的人设。
+    // 以前这里只是把两个数字并排放着，84,018 和 65,536 挨在一起也不喊一声。
+    const BUDGET = 65_536
+    const over = plan.ready && total > BUDGET
+    const footText = !plan.ready
+      ? `模式 ${plan.mode}`
+      : over
+        ? `合计 ${total.toLocaleString('zh-CN')} 字符 · 超出预算 ${(total - BUDGET).toLocaleString('zh-CN')}`
+        : `合计 ${total.toLocaleString('zh-CN')} 字符 · 预算 ${BUDGET.toLocaleString('zh-CN')}`
+
     host.replaceChildren(...[
       el('h2', {}, '注入组装',
         el('span', { class: 'h2-sub', text: plan.ready ? '下一次请求会拼成这段' : '这次放行，下面是原因' })),
       el('div', { class: 'stack-view' }, ...rows),
       el('div', { class: 'stack-foot' },
-        el('span', { text: plan.ready ? `合计 ${total.toLocaleString('zh-CN')} 字符 · 预算 65,536` : `模式 ${plan.mode}` }),
+        el('span', { class: over ? 'over' : '', text: footText }),
         last?.at ? el('span', { text: last.skipped ? `上次 ${fmtTime(last.at)} · 未注入` : `上次 ${fmtTime(last.at)} · ${last.agent || '—'}` }) : null,
       ),
     ].filter(Boolean))

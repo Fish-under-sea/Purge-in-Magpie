@@ -20,12 +20,13 @@ const css = read('page', 'style.css')
 const app = read('page', 'app.js')
 const plan = read('page', 'plan.js')
 const bridge = read('preview', 'bridge.js')
-const icon = read('page', 'icon.svg')
+// 品牌标记内联成 data URI：单文件不能有外部依赖，file:// 下取子文件会被拦。
+// 注意取的是 index.html 里真正在用的那张（card.png）；以前内联的是 icon.svg，
+// 而页面上的 <img src="card.png"> 没被替换，单文件预览的图标一直是坏的。
+const mark = readFileSync(join(here, 'page', 'card.png'))
+const markUri = `data:image/png;base64,${mark.toString('base64')}`
 const ready = read('preview', 'catalog.demo.js')
 const blocked = read('preview', 'catalog.blocked.js')
-
-// 图标内联成 data URI：单文件不能有外部依赖，file:// 下取子文件会被拦。
-const iconUri = `data:image/svg+xml;base64,${Buffer.from(icon, 'utf8').toString('base64')}`
 
 // 两份快照都把 window.PURGE_CATALOG 改名为各自的变量，文件里的注释原样保留。
 const rename = (text, name) => text.replaceAll('window.PURGE_CATALOG', `window.${name}`)
@@ -111,7 +112,7 @@ const out = html
   // plan.js 是纯计算、不碰 DOM，留在原位内联即可（app.js 依赖它）。
   .replace(/<script src="plan\.js[^"]*"><\/script>/, `<script>\n${plan}\n</script>`)
   .replace('</body>', `<script>\n${app}\n</script>\n</body>`)
-  .replace('src="icon.svg"', `src="${iconUri}"`)
+  .replace('src="card.png"', `src="${markUri}"`)
   .replace('<body>', `<body>\n${chrome}`)
   .replace('<title>破甲 · Purge</title>', '<title>破甲 · Purge（单文件预览）</title>')
 
