@@ -6,9 +6,11 @@
 <title>破甲 · Purge</title>
 <script src="_magpie/bridge.js"></script>
 <script src="catalog.js"></script>
-<script src="plan.js"></script>
-<link rel="stylesheet" href="style.css">
-<script src="app.js" defer></script>
+<!-- ?v=0 是占位：tools/prepack.mjs 打包时换成真实版本号，postpack 换回来。
+     没有它，更新插件后浏览器可能一直用缓存的旧 app.js / style.css。 -->
+<script src="plan.js?v=0"></script>
+<link rel="stylesheet" href="style.css?v=0">
+<script src="app.js?v=0" defer></script>
 </head>
 <body>
 

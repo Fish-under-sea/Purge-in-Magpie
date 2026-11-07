@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 import { compose, rewrite, supported } from './lib/rewrite.mjs'
 import { readState } from './lib/agentpurge.mjs'
 import { applyPrefs, resolve as resolvePlan } from './lib/plan.mjs'
-import { loadCatalog, ownOptions, paths, sync } from './lib/state.mjs'
+import { ensurePaths, loadCatalog, ownOptions, sync } from './lib/state.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -81,8 +81,8 @@ export function pick(catalog, options = {}, state = null, agent = '') {
  *   - 请求里只等一个「已经好了」的 Promise，最多等 deadlineMs；
  *   - 等不到就跳过这次注入（report skipped），扫描继续在后台跑完，下个请求就有。
  */
-export function createHook(root = here, { deadlineMs = 400, rescanMs = 30_000, warmUp = true } = {}) {
-  const P = paths(root)
+export function createHook(root = here, { deadlineMs = 400, rescanMs = 30_000, warmUp = true, stateDir = '' } = {}) {
+  const P = ensurePaths(root, stateDir)
   let cached = { at: 0, catalog: loadCatalog(P), key: '' }
   /** 每个配置键各跑各的扫描：一个键在扫不挡另一个键（默认来源慢的时候尤其重要）。 */
   const scans = new Map()
@@ -104,9 +104,16 @@ export function createHook(root = here, { deadlineMs = 400, rescanMs = 30_000, w
     const running = scans.get(key)
     if (running) return running
     const job = Promise.resolve()
-      .then(() => sync(root, options))
-      .then(({ catalog }) => {
+      .then(() => sync(root, options, { stateDir }))
+      .then(({ catalog, snapshotWritten, snapshotError }) => {
         cached = { at: Date.now(), catalog, key }
+        // 快照写不进去是「页面永远看到空壳」的根因，以前被静默吞掉了。
+        // 这里至少留一条能查到的记录，别让人对着空页面猜。
+        if (snapshotWritten === false) {
+          try {
+            console.error(`[purge] 写不进页面快照 ${P.snapshotFile}：${snapshotError || '未知原因'}（插件目录可能是只读的）`)
+          } catch { /* 控制台不可用就算了 */ }
+        }
         return catalog
       })
       .catch(() => null)

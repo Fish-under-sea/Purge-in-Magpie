@@ -41,7 +41,8 @@
     "test": "node --test --test-isolation=none \"tests/*.test.mjs\"",
     "preview": "node tools/build-preview.mjs",
     "preview:serve": "node preview/serve.mjs --demo --watch",
-    "prepack": "node tools/prepack.mjs && node tools/build-preview.mjs && node tools/card-icon.mjs"
+    "prepack": "node tools/prepack.mjs && node tools/build-preview.mjs && node tools/card-icon.mjs",
+    "postpack": "node tools/postpack.mjs"
   },
   "magpie": {
     "hooks": "./hooks.js",

@@ -160,7 +160,28 @@ magpie plugin list
 ```
 
 装好后 magpie 的侧栏会多出一页「破甲 · Purge」；插件页第一次打开时，后端会清点包内内容与已导入的文件，
-写出 `state/catalog.json` 与 `page/catalog.js` 两份快照，页面读的是后者。
+写出 `catalog.json` 与 `page/catalog.js` 两份产物，页面读的是后者。
+
+### 两份产物分别放哪
+
+| 产物 | 位置 | 为什么 |
+| --- | --- | --- |
+| `catalog.json`、`imports/`、`last.json` | `~/.magpie/purge/` | 用户数据。放包目录里会被 npm 升级整目录替换掉，导入的副本每次更新都丢 |
+| `page/catalog.js` | 包内 `page/` | 派生快照。必须留在包内，页面是通过 `<script src="catalog.js">` 拿它的 |
+
+旧版本把 `state/` 放在包目录里；升级后第一次扫描会自动把它搬到新位置，不覆盖已有文件。
+
+`PURGE_STATE_DIR` 可以覆盖 `~/.magpie/purge`（多实例或测试用）；建不出来时自动退回包内 `state/`，
+宁可退到一个会被升级清掉的位置，也好过整个扫描直接抛错、页面停在空壳上。
+
+### 缓存与「更新后看不见变化」
+
+页面打开时会自己带时间戳重取一次 `catalog.js`（`catalog.js?t=…`），所以后端刚写出的快照立刻可见，
+不会因为浏览器缓存而一直看到旧的那份。`app.js` / `plan.js` / `style.css` 在打包时会被打上
+`?v=<版本号>`；仓库里是 `?v=0` 占位，`postpack` 会还原，免得每次发版都留一处待提交的改动。
+
+包内出厂的 `catalog.js` 是个空壳（`version: 0`）。页面把「版本号 < 1」当作「后端还没扫过」，
+会自己轮询等待，不会对着空列表干等。
 
 ## 配置
 
@@ -173,7 +194,7 @@ magpie plugin list
 | `agents` | 只对这些 magpie agent 生效，如 `["claude","codex"]`；空数组 = 全部 |
 | `enabled` | `{条目id: true/false}`：技能必须显式为 `true` 才注入；人设默认启用 |
 | `pinned` | `{条目id: 摘要}`：固定到某一版，网关用那一版的正文 |
-| `imports` | 页面写的导入请求（`{op, path, at}`），后端处理后复制进 `state/imports` |
+| `imports` | 页面写的导入请求（`{op, path, at}`），后端处理后复制进 `~/.magpie/purge/imports` |
 | `inline` | 页面里直接贴进来的人设/技能正文，不进磁盘 |
 | `gatewayTimeoutMs` | 钩子预算，默认 1500 ms（magpie 侧 100–10000） |
 | `useAgentPurge` | 默认 `false`。设为 `true` 才去读 agent-purge 的 `state.json`，见下 |
@@ -223,10 +244,10 @@ magpie plugin options magpie-purge '{"useAgentPurge":true}'
 「导入」折叠区里：**先点「选择」挑文件**（路径会填进输入框，你能看见选中了什么），
 **再点「导入」才真的写进去**。一步到底容易误触——浏览器选完就落盘，人还没确认类型。
 
-- 框里直接粘**绝对路径**时走另一条路：后端把原件复制进 `state/imports`，原文件不动；
+- 框里直接粘**绝对路径**时走另一条路：后端把原件复制进 `~/.magpie/purge/imports`，原文件不动；
 - 「这份文件是」三选一（自动判断 / 人设 / 技能）：自动判断按 frontmatter 与正文结构猜，
   猜错就在检查器里点**「改判为技能 / 人设」**，不必删了重导；
-- 删的时候用检查器里的**「删除导入」**（页面导入的）或**「删除副本」**（复制进 `state/imports` 的），
+- 删的时候用检查器里的**「删除导入」**（页面导入的）或**「删除副本」**（复制进 `~/.magpie/purge/imports` 的），
   指向它的 `persona` / `enabled` / `pinned` 引用会一起清掉——否则会卡在「指定的人设不在了」。
 
 选中任一条目，检查器里有**「查看原文」**：正文（去掉 frontmatter 之后真正会拼进 system 的那段）
@@ -361,7 +382,7 @@ node tools/scan.mjs --json
 
 | 项 | agent-purge 的 `magpie-plugin/` | 本插件 |
 | --- | --- | --- |
-| 来源 | 只读 `~/.agent-purge/` | 包内专家包 + `state/imports`（只认导入） |
+| 来源 | 只读 `~/.agent-purge/` | 包内专家包 + `~/.magpie/purge/imports`（只认导入） |
 | 判型 | 只有人设 markdown | 导出包 / DSH 插件包 / 人设 / 技能 / 文本 / 清单 |
 | 注入 | 一个人设 | 人设 + 显式启用的技能（含 22 份内置技能） |
 | 页面 | 人设选择 + 导入 | 条目列表 + 检查器 + 模式 + 回滚 + 校验记录 |

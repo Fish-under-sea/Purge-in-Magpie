@@ -14,6 +14,8 @@ function workspace() {
   mkdirSync(join(dir, 'page'), { recursive: true })
   mkdirSync(join(dir, 'skills'), { recursive: true })
   mkdirSync(join(dir, 'personas'), { recursive: true })
+  // state 放在用户目录（跨升级存活），测试指到临时目录，别写进真实的 ~/.magpie
+  process.env.PURGE_STATE_DIR = join(dir, 'state')
   return dir
 }
 after(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }) })

@@ -91,8 +91,9 @@ const chrome = `
 `
 
 const out = html
-  // 外链资源换成内联
-  .replace('<link rel="stylesheet" href="style.css">', `<style>\n${css}\n/* ---- 预览控制条 ---- */\n.pv-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--card);font:12px/1.4 var(--magpie-font,system-ui);color:var(--ink)}
+  // 外链资源换成内联。三个匹配都用正则带上 ?v=：打包时 prepack 会给它们打版本号，
+  // 用固定字符串匹配会在 prepack 之后失效，单文件预览就整份不内联了。
+  .replace(/<link rel="stylesheet" href="style\.css[^"]*">/, `<style>\n${css}\n/* ---- 预览控制条 ---- */\n.pv-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--card);font:12px/1.4 var(--magpie-font,system-ui);color:var(--ink)}
 .pv-bar b{font-size:13px;font-weight:600}
 .pv-hint{color:var(--muted);margin-right:auto}
 .pv-bar label{display:flex;align-items:center;gap:6px;color:var(--muted)}
@@ -103,12 +104,12 @@ const out = html
     // 单文件用 hash 传参，桥也跟着读 hash
     "new URLSearchParams(location.hash.slice(1) || location.search.slice(1))",
   )}\n</script>`)
-  .replace('<script src="catalog.js"></script>', `<script>\n${rename(ready, '__PURGE_READY__')}\n</script>\n<script>\n${rename(blocked, '__PURGE_BLOCKED__')}\n</script>\n<script>${catalogBlock}</script>`)
+  .replace(/<script src="catalog\.js[^"]*"><\/script>/, `<script>\n${rename(ready, '__PURGE_READY__')}\n</script>\n<script>\n${rename(blocked, '__PURGE_BLOCKED__')}\n</script>\n<script>${catalogBlock}</script>\n<script>window.__PURGE_SINGLE_FILE__ = true</script>`)
   // app.js 原本是 defer：内联到 <head> 里会赶在 DOM 之前跑，什么都取不到。
   // 所以从这个位置摘掉，放到 </body> 前。
-  .replace('<script src="app.js" defer></script>', '')
+  .replace(/<script src="app\.js[^"]*" defer><\/script>/, '')
   // plan.js 是纯计算、不碰 DOM，留在原位内联即可（app.js 依赖它）。
-  .replace('<script src="plan.js"></script>', `<script>\n${plan}\n</script>`)
+  .replace(/<script src="plan\.js[^"]*"><\/script>/, `<script>\n${plan}\n</script>`)
   .replace('</body>', `<script>\n${app}\n</script>\n</body>`)
   .replace('src="icon.svg"', `src="${iconUri}"`)
   .replace('<body>', `<body>\n${chrome}`)

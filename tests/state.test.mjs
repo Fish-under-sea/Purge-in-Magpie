@@ -5,13 +5,15 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
-import { loadCatalog, snapshotFrom, sync } from '../lib/state.mjs'
+import { loadCatalog, migrateLegacyState, paths, snapshotFrom, sync } from '../lib/state.mjs'
 
 const dirs = []
 function workspace() {
   const dir = mkdtempSync(join(tmpdir(), 'purge-state-'))
   dirs.push(dir)
   mkdirSync(join(dir, 'page'), { recursive: true })
+  // state 现在放在用户目录（跨升级存活），测试要指到临时目录，别写进真实的 ~/.magpie
+  process.env.PURGE_STATE_DIR = join(dir, 'state')
   return dir
 }
 after(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }) })
@@ -53,6 +55,75 @@ test('导入与刷新戳都没变时不重扫', () => {
   const forced = sync(here, { imports, refreshAt: 2 })
   assert.equal(forced.changed, true)
   assert.ok(forced.catalog.version > first.catalog.version)
+})
+
+test('条目没变但设置变了，快照文件也要跟着更新', () => {
+  const here = workspace()
+  const src = join(here, 'src')
+  mkdirSync(src)
+  writeFileSync(join(src, 'a.md'), '---\nid: a\nkind: skill\n---\nA 的正文')
+  const imports = [{ op: 'import', path: join(src, 'a.md'), at: 1 }]
+
+  const first = sync(here, { imports, refreshAt: 1, mode: 'replace', enabled: { a: true } }, { force: true })
+  assert.equal(first.changed, true)
+  const snapFile = join(here, 'page', 'catalog.js')
+  assert.match(readFileSync(snapFile, 'utf8'), /"mode": "replace"/)
+
+  // 同一份来源，只改设置：签名不变、不重扫，但快照必须落盘。
+  // 以前这里直接 return，文件一个字节都不动，页面永远看到第一次的 options。
+  const second = sync(here, { imports, refreshAt: 1, mode: 'append', enabled: { a: true } })
+  assert.equal(second.changed, false, '条目确实没变')
+  assert.equal(second.snapshotWritten, true)
+  const onDisk = readFileSync(snapFile, 'utf8')
+  assert.match(onDisk, /"mode": "append"/, '快照文件要反映新设置')
+  assert.equal(JSON.parse(onDisk.replace(/^window\.PURGE_CATALOG = /, '').replace(/;\s*$/, '')).options.mode, 'append')
+})
+
+test('state 默认落在用户目录，快照留在包内', () => {
+  const here = workspace()
+  const saved = process.env.PURGE_STATE_DIR
+  // 清掉测试隔离用的覆盖，看真实默认值
+  delete process.env.PURGE_STATE_DIR
+  try {
+    const p = paths(here)
+    assert.ok(!p.stateDir.startsWith(here), `state 不该落在包目录里：${p.stateDir}`)
+    assert.ok(p.stateDir.includes('.magpie'), '默认落在 ~/.magpie/purge')
+    // 快照必须留在包内：页面是通过 <script src="catalog.js"> 拿它的
+    assert.ok(p.snapshotFile.startsWith(here), '快照要在包内')
+    assert.equal(p.legacyStateDir, join(here, 'state'), '旧位置用来迁移')
+  } finally {
+    process.env.PURGE_STATE_DIR = saved
+  }
+})
+
+test('导入副本写进指定的 state 目录，不写包目录', () => {
+  const here = workspace()
+  const src = join(here, 'src')
+  mkdirSync(src)
+  writeFileSync(join(src, 'a.md'), '---\nid: a\n---\nA')
+  const external = join(here, 'external-state')
+  sync(here, { imports: [{ op: 'import', path: join(src, 'a.md'), at: 1 }] }, { force: true, stateDir: external })
+
+  assert.ok(existsSync(join(external, 'catalog.json')), 'catalog.json 在指定目录')
+  assert.ok(existsSync(join(external, 'imports')), '导入副本在指定目录')
+  assert.ok(existsSync(join(here, 'page', 'catalog.js')), '快照仍在包内')
+  assert.ok(!existsSync(join(here, 'state', 'catalog.json')), '包内不该再产生 state/catalog.json')
+})
+
+test('旧位置（包内 state/）的数据会迁移到新位置', () => {
+  const here = workspace()
+  // 这个用例要模拟「新位置在别处、旧位置还在包里」，所以把 state 指到另一个目录
+  process.env.PURGE_STATE_DIR = join(here, 'moved-state')
+  const legacy = join(here, 'state')
+  mkdirSync(join(legacy, 'imports'), { recursive: true })
+  writeFileSync(join(legacy, 'catalog.json'), JSON.stringify({ version: 7, signature: 'x', entries: [], sources: [], rejected: [], imports: [] }))
+  writeFileSync(join(legacy, 'imports', 'old.md'), '---\nid: old\n---\n旧副本')
+
+  const p = paths(here)
+  const moved = migrateLegacyState(p)
+  assert.ok(moved >= 2, `应该搬了至少两份，实际 ${moved}`)
+  assert.equal(loadCatalog(p).version, 7, 'catalog.json 被接过来了')
+  assert.ok(existsSync(join(p.importsDir, 'old.md')), '旧导入副本也搬过来了')
 })
 
 test('导入时指定的类型写进副本的 frontmatter，判定就按它来', () => {

@@ -209,8 +209,10 @@
   function renderList() {
     const host = $('list')
     const rows = visible()
-    if (!catalog) {
-      host.replaceChildren(el('p', { class: 'empty', text: '还没有快照：后端没跑过扫描。点右上角「重新扫描」。' }))
+    if (!hasSnapshot()) {
+      // version 0 是「出厂的空壳」：后端还没扫过，或者它根本写不进 page/catalog.js。
+      // 这两种情况页面看到的一模一样，所以两句话都要说，别让人猜。
+      host.replaceChildren(el('p', { class: 'empty', text: '还没有快照：后端还没扫过，或它写不进 page/catalog.js（插件目录只读时会发生）。点右上角「重新扫描」再等几秒。' }))
       return
     }
     if (!rows.length) {
@@ -1020,7 +1022,7 @@
           return
         }
         if (Date.now() < until) setTimeout(tick, 1200)
-        else say('后端还没写出新快照：magpie 里插件可能没重启，或它写不进自己的 state 目录。', 'bad')
+        else say('后端还没写出新快照：magpie 里插件可能没重启，或它写不进 page/catalog.js（插件目录只读）。', 'bad')
       }
       script.onerror = () => {
         script.remove()
@@ -1136,6 +1138,10 @@
   }
 
   async function boot() {
+    // 先自己拉一份快照，带上时间戳。
+    // 静态 <script src="catalog.js"> 没有任何版本参数：更新插件后浏览器可能一直用旧缓存，
+    // 于是「怎么更新看到的都是老快照」。这里改成每次进页面都重新取一次。
+    await loadSnapshot()
     if (bridge?.ready?.then) {
       try {
         await Promise.race([bridge.ready, new Promise((r) => setTimeout(r, 1500))])
@@ -1157,7 +1163,32 @@
       modeMenuOpen = true
       renderPlan()
     }
-    if (!catalog) pollSnapshot('还没有快照，等后端第一次扫描…', 20)
+    // 包内 catalog.js 出厂是个空壳（version: 0）。它是个真值对象，所以
+    // `if (!catalog)` 永远不成立——新装用户会对着空列表干等，页面不会自己重试。
+    // 判据要落到版本号上：version < 1 就是「后端还没扫过」。
+    if (!hasSnapshot()) pollSnapshot('等后端第一次扫描…', 25)
+  }
+
+  /** hasSnapshot 判断手上的快照是不是「真的扫过」——空壳（version 0）不算。 */
+  function hasSnapshot() {
+    return Boolean(catalog && Number(catalog.version) >= 1 && Array.isArray(catalog.entries))
+  }
+
+  /** loadSnapshot 动态取最新快照脚本；失败就当没有，别让启动挂住。 */
+  function loadSnapshot() {
+    return new Promise((resolve) => {
+      // 单文件预览把快照内联了，没有 catalog.js 可取
+      if (window.__PURGE_SINGLE_FILE__) { resolve(); return }
+      const script = document.createElement('script')
+      script.src = `catalog.js?t=${Date.now()}`
+      script.onload = () => {
+        script.remove()
+        if (window.PURGE_CATALOG) catalog = window.PURGE_CATALOG
+        resolve()
+      }
+      script.onerror = () => { script.remove(); resolve() }
+      document.head.append(script)
+    })
   }
 
   /** 页面被切回来时顺手换一份快照：宿主可能在背后扫过一次。 */
