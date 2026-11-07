@@ -377,6 +377,14 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 右侧一列：状态徽标 + 「查看」。位置固定，一列扫下去就能看出谁没启用；
+   徽标若跟在名字后面，会因为名字长短不一而左右跳。 */
+.row-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
 .row .side {
   text-align: right;
   color: var(--muted);
@@ -384,13 +392,11 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-/* 状态胶囊跟名字同行：放右侧会把行高撑到 70px，十条就多出一屏 */
+/* 状态徽标：跟右侧按钮同一列，不再挤在名字后面 */
 .row .badge {
   display: inline-block;
-  vertical-align: 1px;
   font-size: 12px;
   padding: 0 7px;
-  margin-left: 8px;
   border-radius: 999px;
   border: 1px solid currentColor;
 }

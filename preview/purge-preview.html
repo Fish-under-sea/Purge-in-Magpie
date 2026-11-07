@@ -1333,6 +1333,14 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 右侧一列：状态徽标 + 「查看」。位置固定，一列扫下去就能看出谁没启用；
+   徽标若跟在名字后面，会因为名字长短不一而左右跳。 */
+.row-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
 .row .side {
   text-align: right;
   color: var(--muted);
@@ -1340,13 +1348,11 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-/* 状态胶囊跟名字同行：放右侧会把行高撑到 70px，十条就多出一屏 */
+/* 状态徽标：跟右侧按钮同一列，不再挤在名字后面 */
 .row .badge {
   display: inline-block;
-  vertical-align: 1px;
   font-size: 12px;
   padding: 0 7px;
-  margin-left: 8px;
   border-radius: 999px;
   border: 1px solid currentColor;
 }
@@ -2141,12 +2147,15 @@ textarea.text-edit:focus-visible {
     ].filter((g) => g.rows.length)
 
     const nodes = []
+    // 算一次「这次由谁顶上」，每行都用它判断人设是否处于启用态。
+    // 逐行重算会把 resolve 跑 23 遍，纯属浪费。
+    const effectivePersona = currentPlan()?.personaId || ''
     for (const group of groups) {
       nodes.push(el('div', { class: 'group-head' },
         el('span', { text: group.label }),
         el('span', { class: 'n', text: String(group.rows.length) }),
       ))
-      for (const e of group.rows) nodes.push(rowOf(e))
+      for (const e of group.rows) nodes.push(rowOf(e, effectivePersona))
     }
     // 移除是「从候选里拿掉」，不是删文件；入口留在这儿，否则移掉一条就再也找不回来。
     const removedIds = Object.keys(options.removed || {}).filter((id) => options.removed[id] === true)
@@ -2170,16 +2179,19 @@ textarea.text-edit:focus-visible {
    * 点右侧「查看」= 打开检查器看详情与原文。
    * 之前点行是「看详情」，开关另有一片芯片墙——同一件事两个入口，还多占一屏。
    */
-  function rowOf(e) {
+  function rowOf(e, effectivePersona = '') {
     const kind = KINDS[e.kind] || { label: e.kind }
-    const on = isEnabled(e.id)
     const isPersona = e.kind === 'persona'
     const isCurrent = isPersona && options.persona === e.id
+    // 人设的「开」不是 options.enabled，而是「这次到底由谁顶上」：
+    // 没显式选人设时，标了 default 的底座人设会被自动选中，它也该显示成已启用。
+    // 技能的「开」才是 options.enabled。
+    const on = isPersona ? Boolean(effectivePersona) && effectivePersona === e.id : isEnabled(e.id)
     const badge = e.status === 'rejected'
       ? el('span', { class: 'badge reject', text: '拒绝' })
       : !e.injectable
         ? null
-        : on ? null : el('span', { class: 'badge off', text: isPersona ? '非当前' : '未启用' })
+        : on ? null : el('span', { class: 'badge off', text: '未启用' })
 
     const openView = () => {
       // 换条目就收起原文：从一条展开着的详情跳到另一条，不该自动展示别人的正文。
@@ -2192,7 +2204,16 @@ textarea.text-edit:focus-visible {
       // 素材没有开关可拨，点它就是看详情——总比什么都不发生强。
       if (!e.injectable) return openView()
       if (isPersona) {
-        save({ persona: isCurrent ? '' : e.id }, isCurrent ? '已取消当前人设' : `已把「${e.name}」设为当前人设`)
+        // 人设也是开关：点一下顶上，再点一下停用。
+        // 停用时必须同时写 enabled=false——只把 options.persona 清空的话，
+        // 「没选人设就自动用底座人设」会把刚关掉的那位又捡回来，看着像点了没反应。
+        if (on) {
+          const enabledNext = { ...(options.enabled || {}), [e.id]: false }
+          save({ persona: '', enabled: enabledNext }, `已停用「${e.name}」：这次不注入人设`)
+        } else {
+          const enabledNext = { ...(options.enabled || {}), [e.id]: true }
+          save({ persona: e.id, enabled: enabledNext }, `已把「${e.name}」设为当前人设`)
+        }
       } else {
         save({ enabled: { ...(options.enabled || {}), [e.id]: !on } }, on ? `已停用「${e.name}」` : `已启用「${e.name}」`)
       }
@@ -2207,7 +2228,7 @@ textarea.text-edit:focus-visible {
       title: !e.injectable
         ? '看详情'
         : isPersona
-          ? (isCurrent ? '取消当前人设' : '设为当前人设')
+          ? (isCurrent ? '取消当前人设，让回底座人设' : '设为当前人设')
           : (on ? `停用「${e.name}」` : `启用「${e.name}」`),
       onclick: act,
       onkeydown: (ev) => {
@@ -2216,16 +2237,20 @@ textarea.text-edit:focus-visible {
     },
       el('span', { class: 'spine', style: `--spine:var(--kind-${kindClass(e.kind)})` }),
       el('span', {},
-        el('span', { class: 'title' }, e.name, badge || null),
+        el('span', { class: 'title', text: e.name }),
         el('span', { class: 'meta', text: `${kind.label} · ${e.builtin ? '随插件' : e.source?.rel ?? ''}` }),
       ),
-      // 右侧只留一个「查看」：字数挪进详情，一行只做一件事。
-      el('button', {
-        type: 'button',
-        class: 'row-view',
-        title: '看详情与原文',
-        onclick: (ev) => { ev.stopPropagation(); openView() },
-      }, '查看'),
+      // 右侧一列：状态徽标 + 「查看」。徽标原来是跟在名字后面的，
+      // 名字长短不一时它左右乱跳；挪到右边固定位置，一列扫下去就能看出谁没启用。
+      el('span', { class: 'row-side' },
+        badge || null,
+        el('button', {
+          type: 'button',
+          class: 'row-view',
+          title: '看详情与原文',
+          onclick: (ev) => { ev.stopPropagation(); openView() },
+        }, '查看'),
+      ),
     )
   }
 
