@@ -295,6 +295,26 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
     padding-bottom: 4px;
     mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent);
     align-content: start;
+
+    /* 滚动条挪到左侧：右边缘留给「未启用 / 查看」那一列，滚动条压在上面会盖住按钮。
+       direction:rtl 是唯一能把原生滚动条放到左边的办法，内容再用 ltr 转回来。 */
+    direction: rtl;
+    scrollbar-width: thin;
+    /* 平时透明，hover 才显形——工作台的滚动条不该常驻占一条边 */
+    scrollbar-color: transparent transparent;
+  }
+  .list > * { direction: ltr; }
+  .list:hover { scrollbar-color: color-mix(in oklab, var(--muted) 50%, transparent) transparent; }
+  .list::-webkit-scrollbar { width: 8px; }
+  .list::-webkit-scrollbar-track { background: transparent; }
+  .list::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 999px;
+    transition: background-color .15s ease;
+  }
+  .list:hover::-webkit-scrollbar-thumb,
+  .list:focus-within::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--muted) 45%, transparent);
   }
   .list:has(> .row:last-child:first-child) { mask-image: none; }
 }
@@ -483,7 +503,7 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 .ruler-seg.is-over { background: var(--danger); }
 .ruler-ticks {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   margin-top: 3px;
   color: var(--muted);
   font-size: 12px;

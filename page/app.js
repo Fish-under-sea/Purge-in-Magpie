@@ -66,6 +66,24 @@
   const fmtTime = (ms) => (ms ? new Date(ms).toLocaleString('zh-CN', { hour12: false }) : '—')
   const short = (digest) => (digest ? String(digest).slice(0, 12) : '—')
 
+  /**
+   * pluginVersion 读插件自己的版本号。
+   *
+   * 页面拿不到 package.json（沙箱里不能 fetch），但 prepack 会把 app.js 的引用
+   * 打上 ?v=<版本号>。从自己的 script 标签把这个参数读回来就行。
+   * 开发时是占位的 ?v=0，返回空串，外面显示「开发版」。
+   */
+  function pluginVersion() {
+    const tag = [...document.scripts].find((s) => /(^|\/)app\.js(\?|$)/.test(s.src))
+    if (!tag) return ''
+    try {
+      const v = new URL(tag.src, location.href).searchParams.get('v') || ''
+      return v && v !== '0' ? v : ''
+    } catch {
+      return ''
+    }
+  }
+
   function say(text, tone = '') {
     const el = $('status')
     el.textContent = text
@@ -455,9 +473,9 @@
 
     return el('div', { class: 'ruler', role: 'img', 'aria-label': `预算占用 ${total.toLocaleString('zh-CN')} / ${budget.toLocaleString('zh-CN')} 字符` },
       track,
+      // 只有右端一个读数。左端原来写了个「0」标刻度起点，可它既不解释什么，
+      // 也不和任何东西对齐——一个孤零零的零，看的人只会问「这 0 是什么意思」。
       el('div', { class: 'ruler-ticks' },
-        el('span', { text: '0' }),
-        // 合计与预算合成一处：原来底部还单列一遍「合计 X 字符 · 预算 Y」，同一组数字说两次。
         el('span', {
           class: over ? 'over' : '',
           text: over
@@ -801,7 +819,11 @@
       $('count').textContent = '没有快照'
     } else {
       const shown = visible().length
-      $('count').textContent = `${shown} / ${entries().length + inlineEntries().length} 条 · 快照 v${catalog.version} · ${fmtTime(catalog.generatedAt)}`
+      // 显示插件版本而不是「快照 v12」：那个数字是后端的扫描计数，
+      // 对用户没有意义；版本号才回答「我装的是哪一版」。
+      const ver = pluginVersion()
+      const verText = ver ? `v${ver.replace(/^v/, '')}` : '开发版'
+      $('count').textContent = `${shown} / ${entries().length + inlineEntries().length} 条 · ${verText} · ${fmtTime(catalog.generatedAt)}`
     }
     renderPlan()
     renderFilters()
