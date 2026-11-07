@@ -844,9 +844,10 @@
     // 选着条目就看详情，没选就回组装预览：右栏永远有东西，不留空屏。
     renderAssembly()
     renderInspector()
+    // 详情在浮层里，右栏永远是「注入组装」：以前详情顶掉右栏，
+    // 想对标一下组装就得先关掉详情，来回切。
     const picked = Boolean(findEntry(selected))
-    $('assembly').hidden = picked
-    $('inspect').hidden = !picked
+    $('modal').hidden = !picked
     renderRejects()
   }
 
@@ -1175,10 +1176,31 @@
     }
   }
 
+  /** closeModal 关掉详情浮层：把选中项清掉，下一次 render 就不会再画它。 */
+  function closeModal() {
+    if (!selected) return
+    selected = ''
+    showingText = false
+    editingText = false
+    render()
+    // 焦点还给列表，别掉到 body 上让键盘用户迷路
+    document.querySelector('#list .row')?.focus()
+  }
+
   function wire() {
     // 模式选择器与「确认注入」都是每次 renderPlan 重建的，监听写在创建处（onclick/onkeydown），
     // 这里只绑那些常驻不动的控件。
     $('q').addEventListener('input', (e) => { query = e.target.value; render() })
+
+    // 详情浮层：右上角 ×、点空白处、按 Esc 都能关。
+    $('modal-close').addEventListener('click', closeModal)
+    $('modal').addEventListener('click', (e) => {
+      // 只有点在遮罩本身（不是卡片内部）才关
+      if (e.target === $('modal')) closeModal()
+    })
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !$('modal').hidden) { e.stopPropagation(); closeModal() }
+    })
 
     // 点面板以外的地方就收起。用捕获阶段：面板内部自己 stopPropagation。
     document.addEventListener('click', () => {

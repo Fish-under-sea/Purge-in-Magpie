@@ -34,10 +34,18 @@
     <div id="list" class="list" role="listbox" aria-label="条目"></div>
   </section>
 
-  <section class="panel" id="panel" aria-label="注入组装与条目详情" aria-live="polite">
+  <section class="panel" id="panel" aria-label="注入组装" aria-live="polite">
     <div id="assembly"></div>
-    <div id="inspect"></div>
   </section>
+</div>
+
+<!-- 条目详情走浮层：右栏一直是「注入组装」，不该被详情顶掉。
+     点「查看」才浮起来，点空白处、右上角 ×、或按 Esc 关掉。 -->
+<div class="modal" id="modal" hidden>
+  <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="条目详情" style="overscroll-behavior: contain">
+    <button type="button" class="modal-x" id="modal-close" aria-label="关闭详情">×</button>
+    <div id="inspect"></div>
+  </div>
 </div>
 
 <footer class="foot">

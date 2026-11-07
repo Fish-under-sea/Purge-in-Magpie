@@ -1462,10 +1462,9 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 
 /* ---------- 右栏：组装 / 详情 ---------- */
 .panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-/* 装配区与详情区都吃满右栏剩余高度，各自内部滚动：
-   页面整体不滚，滚的只能是这两块之一。 */
-#assembly, #inspect { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-#inspect { overflow-y: auto; }
+/* 装配区吃满右栏剩余高度并在内部滚；详情在浮层里，滚动交给浮层自己，别套两层。 */
+#assembly { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+#inspect { min-width: 0; }
 
 .panel h2 {
   margin: 0 0 14px;
@@ -1728,7 +1727,7 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
 }
 .ins-pct { color: var(--ink); font-variant-numeric: tabular-nums; }
 .meter-track { height: 6px; border-radius: 999px; background: var(--line); }
-.meter-fill { height: 100%; border-radius: 999px; background: var(--accent); transition: width .2s ease; }
+.meter-fill { height: 100%; border-radius: 999px; background: var(--accent); }
 .ins-meter-note { margin: 7px 0 0; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .ins-origin { margin: 0; font-size: 12px; color: var(--muted); }
@@ -1833,6 +1832,63 @@ textarea.text-edit:focus-visible {
   font-size: 12.5px;
   padding: 16px 2px;
   margin: 0;
+}
+
+/* ---------- 详情浮层 ---------- */
+/* 点「查看」浮起来盖住整页，点空白处 / × / Esc 关掉。
+   以前详情是顶掉右栏，想对照组装就得先关详情，来回切很累。 */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in oklab, #000 55%, transparent);
+  /* 遮罩自己也吃掉滚动：不然滚到卡片尽头会传动背后的页面 */
+  overscroll-behavior: contain;
+}
+.modal[hidden] { display: none; }
+.modal-sheet {
+  position: relative;
+  width: min(880px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 22px 24px 24px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg);
+  /* 分层阴影而不是一层大范围糊影：两三层小半径叠起来边界更清楚，
+     也不会有「一圈发灰的雾」那种廉价感。 */
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, .28),
+    0 6px 16px -6px rgba(0, 0, 0, .35),
+    0 18px 36px -18px rgba(0, 0, 0, .45);
+  overscroll-behavior: contain;
+}
+.modal-x {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.modal-x:hover { color: var(--ink); border-color: var(--line); }
+@media (max-width: 620px) {
+  .modal { padding: 12px; }
+  .modal-sheet { padding: 18px 16px 20px; }
 }
 
 /* ---------- 底部：导入常态显示 ---------- */
@@ -1995,10 +2051,18 @@ textarea.text-edit:focus-visible {
     <div id="list" class="list" role="listbox" aria-label="条目"></div>
   </section>
 
-  <section class="panel" id="panel" aria-label="注入组装与条目详情" aria-live="polite">
+  <section class="panel" id="panel" aria-label="注入组装" aria-live="polite">
     <div id="assembly"></div>
-    <div id="inspect"></div>
   </section>
+</div>
+
+<!-- 条目详情走浮层：右栏一直是「注入组装」，不该被详情顶掉。
+     点「查看」才浮起来，点空白处、右上角 ×、或按 Esc 关掉。 -->
+<div class="modal" id="modal" hidden>
+  <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="条目详情" style="overscroll-behavior: contain">
+    <button type="button" class="modal-x" id="modal-close" aria-label="关闭详情">×</button>
+    <div id="inspect"></div>
+  </div>
 </div>
 
 <footer class="foot">
@@ -2872,9 +2936,10 @@ textarea.text-edit:focus-visible {
     // 选着条目就看详情，没选就回组装预览：右栏永远有东西，不留空屏。
     renderAssembly()
     renderInspector()
+    // 详情在浮层里，右栏永远是「注入组装」：以前详情顶掉右栏，
+    // 想对标一下组装就得先关掉详情，来回切。
     const picked = Boolean(findEntry(selected))
-    $('assembly').hidden = picked
-    $('inspect').hidden = !picked
+    $('modal').hidden = !picked
     renderRejects()
   }
 
@@ -3203,10 +3268,31 @@ textarea.text-edit:focus-visible {
     }
   }
 
+  /** closeModal 关掉详情浮层：把选中项清掉，下一次 render 就不会再画它。 */
+  function closeModal() {
+    if (!selected) return
+    selected = ''
+    showingText = false
+    editingText = false
+    render()
+    // 焦点还给列表，别掉到 body 上让键盘用户迷路
+    document.querySelector('#list .row')?.focus()
+  }
+
   function wire() {
     // 模式选择器与「确认注入」都是每次 renderPlan 重建的，监听写在创建处（onclick/onkeydown），
     // 这里只绑那些常驻不动的控件。
     $('q').addEventListener('input', (e) => { query = e.target.value; render() })
+
+    // 详情浮层：右上角 ×、点空白处、按 Esc 都能关。
+    $('modal-close').addEventListener('click', closeModal)
+    $('modal').addEventListener('click', (e) => {
+      // 只有点在遮罩本身（不是卡片内部）才关
+      if (e.target === $('modal')) closeModal()
+    })
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !$('modal').hidden) { e.stopPropagation(); closeModal() }
+    })
 
     // 点面板以外的地方就收起。用捕获阶段：面板内部自己 stopPropagation。
     document.addEventListener('click', () => {
