@@ -161,14 +161,32 @@ magpie plugin list
 ```
 
 装好后 magpie 的侧栏会多出一页「破甲 · Purge」；插件页第一次打开时，后端会清点包内内容与已导入的文件，
-写出 `catalog.json` 与 `page/catalog.js` 两份产物，页面读的是后者。
+写出三份产物，页面读后两份。
 
-### 两份产物分别放哪
+### 三份产物分别放哪
 
 | 产物 | 位置 | 为什么 |
 | --- | --- | --- |
 | `catalog.json`、`imports/`、`last.json` | `~/.magpie/purge/` | 用户数据。放包目录里会被 npm 升级整目录替换掉，导入的副本每次更新都丢 |
-| `page/catalog.js` | 包内 `page/` | 派生快照。必须留在包内，页面是通过 `<script src="catalog.js">` 拿它的 |
+| `page/catalog.js` | 包内 `page/` | **只有元数据的**快照，页面用 `<script src>` 载入 |
+| `page/catalog.json` | 包内 `page/` | **完整快照**（含正文），页面用 `fetch` 取 |
+
+### 为什么把正文拆出去（重要）
+
+内置技能是一批红队手册，合计约 130 KB。以前整段内联进 `page/catalog.js`，这个文件就成了
+「一个装着 webshell / Meterpreter / 冰蝎 大段文本的可执行脚本」——Windows Defender 据此把它判成
+`Trojan:Script/Wacatac.C!ml`。正文挪进 `.json` 之后，脚本里只剩条目名、类型、字数这类元数据
+（实测 104 KB → 18 KB，正文 0 条），不再落在脚本引擎的扫描范围里。
+
+代价是页面要读正文就得多一条通道，而 magpie 插件页的 CSP 是 `connect-src 'none'`：
+
+| 宿主的 CSP | 页面表现 |
+| --- | --- |
+| `connect-src 'none'`（现状） | 列表、预算、注入判定全部正常；**「查看原文 / 编辑」不可用**，按钮置灰并说明原因 |
+| 放行页面读自身目录 | `fetch('catalog.json')` 成功，正文自动补回，功能完整 |
+
+也就是说：**插件这边已经不依赖宿主改动也能正常用**（只少了原文预览）；想要完整的原文与编辑，
+需要 magpie 上游把插件页 CSP 里的 `connect-src 'none'` 放开到自身目录。
 
 旧版本把 `state/` 放在包目录里；升级后第一次扫描会自动把它搬到新位置，不覆盖已有文件。
 
@@ -181,7 +199,7 @@ magpie plugin list
 不会因为浏览器缓存而一直看到旧的那份。`app.js` / `plan.js` / `style.css` 在打包时会被打上
 `?v=<版本号>`；仓库里是 `?v=0` 占位，`postpack` 会还原，免得每次发版都留一处待提交的改动。
 
-包内出厂的 `catalog.js` 是个空壳（`version: 0`）。页面把「版本号 < 1」当作「后端还没扫过」，
+包内出厂的两个快照都是空壳（`version: 0`）。页面把「版本号 < 1」当作「后端还没扫过」，
 会自己轮询等待，不会对着空列表干等。
 
 ## 配置

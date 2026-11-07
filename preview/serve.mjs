@@ -22,6 +22,20 @@ const demoFile = demoArg ? (demoArg.includes('=') ? `catalog.${demoArg.split('='
 const watchMode = process.argv.includes('--watch')
 const port = Number(process.env.PREVIEW_PORT || 55133)
 
+/**
+ * parseDemo 把演示快照脚本求值成一个普通对象。
+ *
+ * demo 文件是 `window.PURGE_CATALOG = {…}` 再加两段预览开关（?unsent / ?inline），
+ * 所以不能直接 JSON.parse。这里给它一个假的 window/location 跑一遍，
+ * 顺便让那两个开关继续生效。
+ */
+function parseDemo(code, search = '') {
+  const win = {}
+  const fakeLocation = { search }
+  const fn = new Function('window', 'location', 'URLSearchParams', `${code}\n;return window.PURGE_CATALOG`)
+  return fn(win, fakeLocation, URLSearchParams)
+}
+
 const mime = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -86,8 +100,13 @@ const server = http.createServer(async (req, res) => {
     if (pathname.endsWith('/_magpie/bridge.js')) {
       return send(await readFile(join(here, 'bridge.js'), 'utf8'), mime['.js'])
     }
-    if (pathname.endsWith('/catalog.js') && demoFile) {
-      return send(await readFile(join(here, demoFile), 'utf8'), mime['.js'])
+    // 预览也要走「脚本只有元数据、正文在 .json」这条路，否则测不到真实行为。
+    // demoFile 里是带正文的完整快照，这里按后缀拆成两份发。
+    if ((pathname.endsWith('/catalog.js') || pathname.endsWith('/catalog.json')) && demoFile) {
+      const parsed = parseDemo(await readFile(join(here, demoFile), 'utf8'), url.search)
+      if (pathname.endsWith('/catalog.json')) return send(`${JSON.stringify(parsed, null, 2)}\n`, mime['.json'] || 'application/json')
+      const stripped = { ...parsed, entries: (parsed.entries || []).map((e) => ({ ...e, text: '' })) }
+      return send(`window.PURGE_CATALOG = ${JSON.stringify(stripped, null, 2)};\n`, mime['.js'])
     }
     const file = pathname.startsWith('/page/') ? join(root, 'page', pathname.slice(6)) : join(root, pathname)
     if (!file.startsWith(root)) return send('forbidden', 'text/plain', 403)

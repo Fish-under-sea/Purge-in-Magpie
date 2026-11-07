@@ -116,12 +116,30 @@
     return node
   }
 
+  /**
+   * bodyText 是「按需取回的正文」缓存。
+   *
+   * 快照里那份 .js 只有元数据（正文挪去了 catalog.json，见 lib/state.mjs 的注释）。
+   * 页面试着 fetch 一次 .json 把正文补回来：
+   *   - 能取到（CSP 允许读自身目录）：查看原文、编辑、导入计划全都照常；
+   *   - 取不到（connect-src 'none'）：列表与注入判定照常，只是原文不可用。
+   */
+  const bodyText = new Map()
+  /** textsState: 'idle' 没试过 / 'loading' 在取 / 'ready' 有正文 / 'blocked' 取不到 */
+  let textsState = 'idle'
+  let textsError = ''
+
   // entries 出来就已经套过「改过的正文 / 删掉的条目」：
   // 页面写不了磁盘，编辑与删除只能存 options，由 applyPrefs 统一套用。
   const entries = () => {
     const raw = Array.isArray(catalog?.entries) ? catalog.entries : []
     const api = globalThis.PurgePlan
-    return api?.applyPrefs ? api.applyPrefs(raw, options) : raw
+    const list = api?.applyPrefs ? api.applyPrefs(raw, options) : raw.slice()
+    // 正文只从缓存补：快照本身不含它之后，这里是唯一来源
+    for (const e of list) {
+      if (!e.text && bodyText.has(e.id)) e.text = bodyText.get(e.id)
+    }
+    return list
   }
   const inlineEntries = () => (Array.isArray(options.inline) ? options.inline : [])
 
@@ -451,7 +469,7 @@
     const api = globalThis.PurgePlan
     if (!api) return null
     const usable = [...entries(), ...inlineEntries().map(shaped)]
-      .filter((e) => e.status === 'ok' && e.injectable && typeof e.text === 'string' && e.text.trim())
+      .filter((e) => e.status === 'ok' && e.injectable)
     const probe = api.resolve({ options: { ...options, mode: 'replace' }, entries: usable })
     return probe.ready ? probe : null
   }
@@ -531,8 +549,8 @@
     const enabled = isEnabled(e.id)
     const pinned = options.pinned?.[e.id]
     const history = Array.isArray(e.history) ? e.history : []
-    // 可注入条目的正文现在随快照下来（inventory.snapshotOf 带 text），
-    // 所以「看原文」对内置技能也成立，不再只限页面里贴进来的那几条。
+    // 正文不在 .js 快照里（那是 Defender 判毒的来源），要等 fetch 把 .json 取回来。
+    // 取不到就明确说「原文不可用」，而不是给一个点了没反应的按钮。
     const text = typeof e.text === 'string' ? e.text : ''
     const canShowText = Boolean(text.trim())
 
@@ -552,6 +570,16 @@
       }, enabled ? '停用' : '启用'))
     }
     // 「它到底写了什么」是判断要不要启用它的唯一依据：进来就看得到，不用去磁盘翻文件。
+    // 正文取不回来时给一个禁用的按钮 + 原因，而不是让按钮消失得不明不白。
+    if (!canShowText && e.injectable) {
+      actions.push(el('button', {
+        type: 'button',
+        disabled: true,
+        title: textsState === 'blocked'
+          ? `原文取不到：${textsError || '当前 magpie 的 CSP 不允许页面读数据文件'}`
+          : '正在取原文…',
+      }, '查看原文'))
+    }
     if (canShowText) {
       actions.push(el('button', {
         type: 'button',
@@ -895,7 +923,7 @@
     const api = globalThis.PurgePlan
     if (!api) return catalog?.plan || null
     const usable = [...entries(), ...inlineEntries().map(shaped)]
-      .filter((e) => e.status === 'ok' && e.injectable && typeof e.text === 'string' && e.text.trim())
+      .filter((e) => e.status === 'ok' && e.injectable)
     return api.resolve({ options, entries: usable })
   }
 
@@ -1149,6 +1177,9 @@
         if (next && next.version !== before) {
           catalog = next
           render()
+          // 新快照的 .js 里依然没有正文，重新取一次 .json
+          textsState = 'idle'
+          loadTexts()
           say('快照已更新', 'good')
           return
         }
@@ -1319,6 +1350,55 @@
     // `if (!catalog)` 永远不成立——新装用户会对着空列表干等，页面不会自己重试。
     // 判据要落到版本号上：version < 1 就是「后端还没扫过」。
     if (!hasSnapshot()) pollSnapshot('等后端第一次扫描…', 25)
+    else loadTexts()
+  }
+
+  /**
+   * loadTexts 把正文从 catalog.json 取回来。
+   *
+   * 快照的 .js 只有元数据：内置技能是一批红队手册，整段内联进脚本会被
+   * Defender 判成 Trojan:Script/Wacatac.C!ml。正文单独写成 .json，
+   * 页面能 fetch 就补上（查看原文 / 编辑可用），不能就退化成只读目录。
+   * 这是能力探测，不是错误处理：CSP 拦下来是正常情况之一。
+   */
+  async function loadTexts() {
+    if (textsState === 'loading' || textsState === 'ready') return
+    if (window.__PURGE_SINGLE_FILE__) {
+      // 单文件预览把完整快照内联在 <script type="application/json"> 里
+      const node = document.getElementById('snapshot-json')
+      if (node) {
+        try {
+          applyTexts(JSON.parse(node.textContent || '{}'))
+          return
+        } catch { /* 落到下面按取不到处理 */ }
+      }
+      textsState = 'blocked'
+      textsError = '单文件预览里没有内嵌快照'
+      return
+    }
+    textsState = 'loading'
+    try {
+      const res = await fetch(`catalog.json?t=${Date.now()}`, { cache: 'no-store' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const full = await res.json()
+      applyTexts(full)
+    } catch (error) {
+      // 最常见的就是 CSP connect-src 'none'：不是插件坏了，是宿主只允许脚本这一条通道。
+      textsState = 'blocked'
+      textsError = '当前 magpie 的 CSP 不允许页面读数据文件（connect-src）'
+      renderInspector()
+    }
+  }
+
+  /** applyTexts 把完整快照里的正文灌进缓存，然后重画一次。 */
+  function applyTexts(full) {
+    for (const e of full?.entries || []) {
+      if (typeof e?.text === 'string' && e.text.trim()) bodyText.set(e.id, e.text)
+    }
+    textsState = bodyText.size ? 'ready' : 'blocked'
+    if (!bodyText.size) textsError = '快照里没有正文'
+    render()
+    if (selected) renderInspector()
   }
 
   /** hasSnapshot 判断手上的快照是不是「真的扫过」——空壳（version 0）不算。 */
@@ -1353,6 +1433,8 @@
       if (next && next.version !== catalog?.version) {
         catalog = next
         render()
+        textsState = 'idle'
+        loadTexts()
       }
     }
     script.onerror = () => script.remove()

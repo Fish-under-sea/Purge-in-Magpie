@@ -1,9 +1,9 @@
 // prepack：打包前把本机产物还原成空壳。
 //
-// page/catalog.js 里带着这台机器的目录与条目名，state/ 里是完整正文——
-// 两样都不该跟着 npm 包发出去。装好之后第一次打开插件页会重新生成。
-// catalog.js 不删而是写回空壳：页面用 <script> 加载它，文件缺失会变成一条
-// 404 噪音，空壳能让页面直接画「还没有快照」。
+// page/catalog.js 与 page/catalog.json 里带着这台机器的目录与条目名，
+// state/ 里是完整正文——三样都不该跟着 npm 包发出去。装好之后第一次打开插件页会重新生成。
+// 两个快照文件都不删而是写回空壳：页面用 <script> 加载 .js、用 fetch 读 .json，
+// 文件缺失会在控制台留一条 404 噪音，空壳能让页面直接画「还没有快照」。
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -25,7 +25,8 @@ const stub = {
 }
 mkdirSync(join(here, 'page'), { recursive: true })
 writeFileSync(join(here, 'page', 'catalog.js'), `window.PURGE_CATALOG = ${JSON.stringify(stub, null, 2)};\n`, 'utf8')
-console.log('reset page/catalog.js')
+writeFileSync(join(here, 'page', 'catalog.json'), `${JSON.stringify(stub, null, 2)}\n`, 'utf8')
+console.log('reset page/catalog.js + page/catalog.json')
 
 // 给页面资源打上版本号：仓库里留着 ?v=0 占位，打包时换成真实版本。
 // 不打的话，用户更新插件后浏览器可能一直拿缓存的旧 app.js / style.css，

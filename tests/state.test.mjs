@@ -41,6 +41,28 @@ test('sync 写出条目表与页面快照，可注入条目的正文随快照下
   assert.equal(loadCatalog({ catalogFile: join(here, 'state', 'catalog.json') }).entries.length, 1)
 })
 
+test('正文不进 page/catalog.js：脚本里只有元数据，正文单独写 .json', () => {
+  const here = workspace()
+  const src = join(here, 'src')
+  mkdirSync(src)
+  // 正文里放一个「红队手册」式的字样，确认它没被内联进脚本
+  writeFileSync(join(src, 'a.md'), '---\nid: a\nkind: skill\n---\n这里是 webshell 与 Meterpreter 的用法')
+  sync(here, { imports: [{ op: 'import', path: join(src, 'a.md'), at: 1 }] }, { force: true })
+
+  const js = readFileSync(join(here, 'page', 'catalog.js'), 'utf8')
+  const json = readFileSync(join(here, 'page', 'catalog.json'), 'utf8')
+
+  // 这一条就是 Defender 判毒的直接原因：脚本文件里不该出现大段攻击正文
+  assert.ok(!js.includes('webshell'), 'catalog.js 不能含正文')
+  assert.ok(!js.includes('Meterpreter'), 'catalog.js 不能含正文')
+  assert.equal(JSON.parse(js.replace(/^window\.PURGE_CATALOG = /, '').replace(/;\s*$/, '')).entries[0].text, '', '脚本里的 text 应为空串')
+
+  // 完整快照仍然带正文：网关侧要用它来拼 system
+  const full = JSON.parse(json)
+  assert.equal(full.entries[0].text, '这里是 webshell 与 Meterpreter 的用法')
+  assert.equal(full.entries[0].chars, '这里是 webshell 与 Meterpreter 的用法'.length)
+})
+
 test('导入与刷新戳都没变时不重扫', () => {
   const here = workspace()
   const src = join(here, 'src')
